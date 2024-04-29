@@ -1,0 +1,7 @@
+/.env
+/bot/credentials.py
+.idea/
+/credentials.json
+/token.json
+bot/__pycache__/
+
