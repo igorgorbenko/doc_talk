@@ -6,16 +6,22 @@ from credentials import TOKEN
 # Определение стадий диалога
 BRANCH, PERSONAL_INFO, DOCTOR, SCHEDULE, DATE = range(5)
 
+
 async def start(update: Update, context):
     # Определение кнопок для выбора филиала
     reply_keyboard = [['Branch 1', 'Branch 2', 'Branch 3']]
+    telegram_user_id = update.effective_user.id
+    telegram_user_first_name = update.effective_user.first_name
+    telegram_user_last_name = update.effective_user.last_name
+    telegram_user_username = update.effective_user.username
 
     # Отправка сообщения с клавиатурой
     await update.message.reply_text(
-        'Привет! В каком филиале вы хотите записаться?',
+        f'Привет {telegram_user_first_name} {telegram_user_last_name}! В каком филиале вы хотите записаться?',
         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
     )
     return BRANCH
+
 
 async def branch(update: Update, context):
     branch = update.message.text
@@ -24,6 +30,7 @@ async def branch(update: Update, context):
     # print('update.effective_user.id', update.effective_user.id)
     await update.message.reply_text('Пожалуйста, укажите ваше ФИО и контактные данные.')
     return PERSONAL_INFO
+
 
 async def personal_info(update: Update, context):
     user_info = update.message.text
@@ -35,17 +42,22 @@ async def personal_info(update: Update, context):
     )
     return DOCTOR
 
+
 async def doctor(update: Update, context):
     doctor = update.message.text
     context.user_data['doctor'] = doctor
     await update.message.reply_text('Выберите дату и время:')
     return SCHEDULE
 
+
 async def schedule(update: Update, context):
     date = update.message.text
     context.user_data['date'] = date
-    await update.message.reply_text(f'Вы записаны на {date}. Спасибо!')
+
+    doctor = context.user_data['doctor']
+    await update.message.reply_text(f'Вы записаны на {date} к доктору {doctor}. Спасибо!')
     return ConversationHandler.END
+
 
 def main():
     application = Application.builder().token(TOKEN).build()
@@ -63,6 +75,7 @@ def main():
 
     application.add_handler(conv_handler)
     application.run_polling()
+
 
 if __name__ == '__main__':
     main()
