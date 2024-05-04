@@ -324,8 +324,8 @@ async def select_branch(update: Update, context: CallbackContext):
     branch = update.callback_query.data.split('_')[1]
     context.user_data['branch'] = branch
     keyboard = [
-        [InlineKeyboardButton("Доктор А", callback_data='doctor_a')],
-        [InlineKeyboardButton("Доктор Б", callback_data='doctor_b')]
+        [InlineKeyboardButton("Доктор Игорь", callback_data='doctor_a')],
+        [InlineKeyboardButton("Доктор Яша", callback_data='doctor_b')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.callback_query.message.edit_text('Выберите доктора:', reply_markup=reply_markup)
