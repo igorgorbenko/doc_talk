@@ -59,13 +59,22 @@ class OpenAIAssistant:
             print(f"{m.role}: {m.content[0].text.value}")
         print()
 
+    # def format_response(self, messages):
+    #     # Format the response text from the messages
+    #     response_texts = []
+    #     for message in messages.data:
+    #         if message.role == 'assistant':
+    #             response_texts.append(message.content[0].text.value)
+    #     return " ".join(response_texts)
+
     def format_response(self, messages):
-        # Format the response text from the messages
-        response_texts = []
+        # Adjust this method to return only the last assistant's response
+        last_response = ""
         for message in messages.data:
             if message.role == 'assistant':
-                response_texts.append(message.content[0].text.value)
-        return " ".join(response_texts)
+                last_response = message.content[0].text.value
+        return last_response
+
 
 # # Usage
 # if __name__ == "__main__":

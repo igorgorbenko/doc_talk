@@ -73,6 +73,8 @@ async def get_response(update: Update, context: CallbackContext) -> None:
             response, thread_id = ASSISTANT_GPT.fetch_formatted_response(user_input=user_input)
             context.user_data['thread'] = thread_id
 
+        print(response)
+
         await context.bot.delete_message(chat_id, message.message_id)
         keyboard = [[InlineKeyboardButton("Завершить беседу", callback_data='end_conversation')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
