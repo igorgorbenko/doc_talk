@@ -40,12 +40,17 @@ class OpenAIAssistant:
             time.sleep(0.5)
         return run
 
-    def fetch_formatted_response(self, user_input):
+    def fetch_formatted_response(self, user_input, thread_id=None):
         # Create thread, submit message, and fetch response
-        thread, run = self.create_thread_and_run(user_input)
-        self.wait_on_run(run, thread.id)
-        messages = self.get_response(thread.id)
-        return self.format_response(messages)
+        if not thread_id:
+            thread, run = self.create_thread_and_run(user_input)
+            thread_id = thread.id
+        else:
+            run = self.submit_message(thread_id, user_input)
+
+        self.wait_on_run(run, thread_id)
+        messages = self.get_response(thread_id)
+        return self.format_response(messages), thread_id
 
     def pretty_print(self, messages):
         # Print messages in a formatted way

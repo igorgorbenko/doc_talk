@@ -10,12 +10,12 @@ from openai_stuff.openai_stuff import OpenAIAssistant
 
 
 TOKEN = TOKEN_SEAFOOD_GURU
-# openai.api_key = os.environ['OPENAI_API_KEY']
 
 OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
+
 ASSISTANT_ID = "asst_Ti4C9k9Dw2Se3j9zxjqWGAoY"
 ASSISTANT_GPT = OpenAIAssistant(OPENAI_API_KEY, ASSISTANT_ID)
-
+USER_THREADS = {}
 
 # Настройка логирования
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -45,6 +45,7 @@ async def handle_query(update: Update, context: CallbackContext) -> None:
     await query.answer()
     if query.data == 'new_question':
         context.user_data['chat_id'] = query.message.chat_id
+        context.user_data['thread'] = None
         await query.edit_message_text(text="Введите ваш вопрос:")
     elif query.data == 'continue':
         if 'thread' in context.user_data:
@@ -60,14 +61,17 @@ async def handle_query(update: Update, context: CallbackContext) -> None:
 async def get_response(update: Update, context: CallbackContext) -> None:
     user_input = update.message.text
     chat_id = update.message.chat_id
+    context_thread_id = context.user_data.get('thread')
+
+    print(context.user_data)
+
     message = await context.bot.send_message(chat_id, text="Готовлю для вас ответ...")
     try:
-        # response = openai.chat.completions.create(
-        #     model="gpt-3.5-turbo",
-        #     messages=[{"role": "system", "content": "Ты - ассистент по выбору морепродуктов. Отвечай только на вопросы о рыбе и морепродуктах"},
-        #               {"role": "user", "content": user_input}]
-        # )
-        response = ASSISTANT_GPT.fetch_formatted_response(user_input)
+        if context_thread_id:
+            response, _ = ASSISTANT_GPT.fetch_formatted_response(user_input=user_input, thread_id=context_thread_id)
+        else:
+            response, thread_id = ASSISTANT_GPT.fetch_formatted_response(user_input=user_input)
+            context.user_data['thread'] = thread_id
 
         await context.bot.delete_message(chat_id, message.message_id)
         keyboard = [[InlineKeyboardButton("Завершить беседу", callback_data='end_conversation')]]
@@ -79,7 +83,7 @@ async def get_response(update: Update, context: CallbackContext) -> None:
 
 # async def get_response(update: Update, context: CallbackContext) -> None:
 #     user_input = update.message.text
-#     chat_id = update.message.chat_id
+#     chat_id = update.message.chat_idxw
 #     message = await context.bot.send_message(chat_id, text="Готовлю для вас ответ...")
 #
 #     try:
