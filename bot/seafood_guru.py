@@ -1,9 +1,10 @@
 import os
+import asyncio
 import logging
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, CallbackContext
-# import openai
+from telegram.constants import ChatAction
 
 from credentials import TOKEN_SEAFOOD_GURU
 from openai_stuff.openai_stuff import OpenAIAssistant
@@ -17,8 +18,10 @@ ASSISTANT_ID = "asst_Ti4C9k9Dw2Se3j9zxjqWGAoY"
 ASSISTANT_GPT = OpenAIAssistant(OPENAI_API_KEY, ASSISTANT_ID)
 USER_THREADS = {}
 
-# Настройка логирования
+
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# Configure the httpx logger to only output warnings or higher level messages
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 async def start(update: Update, context: CallbackContext) -> None:
@@ -61,66 +64,42 @@ async def handle_query(update: Update, context: CallbackContext) -> None:
 async def get_response(update: Update, context: CallbackContext) -> None:
     user_input = update.message.text
     chat_id = update.message.chat_id
+    tg_username = update.effective_user.username
     context_thread_id = context.user_data.get('thread')
 
-    print(context.user_data)
+    # Send "typing..." action to show the bot is preparing a response
+    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
 
-    message = await context.bot.send_message(chat_id, text="Готовлю для вас ответ...")
+    # Simulate some processing time (if needed)
+    await asyncio.sleep(1)  # Sleep for 1 second to mimic response time
+
+    # message = await context.bot.send_message(chat_id, text="Готовлю для вас ответ...")
     try:
+        logging.info(f'QUESTION: tg_username: {tg_username} - {user_input}')
+
         if context_thread_id:
             response, _ = ASSISTANT_GPT.fetch_formatted_response(user_input=user_input, thread_id=context_thread_id)
         else:
             response, thread_id = ASSISTANT_GPT.fetch_formatted_response(user_input=user_input)
             context.user_data['thread'] = thread_id
 
-        print(response)
+        logging.info(f'ANSWER: tg_username: {tg_username} - {response}')
 
-        await context.bot.delete_message(chat_id, message.message_id)
-        keyboard = [[InlineKeyboardButton("Завершить беседу", callback_data='end_conversation')]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        # await context.bot.delete_message(chat_id, message.message_id)
+        # keyboard = [[InlineKeyboardButton("Завершить беседу", callback_data='end_conversation')]]
+        # reply_markup = InlineKeyboardMarkup(keyboard)
+        # Determine if this is potentially the last message in a conversation
+        # For example, check if the response suggests concluding the interaction
+        if "завершить" in response.lower():  # Assuming the response contains a hint to end the conversation
+            keyboard = [[InlineKeyboardButton("Завершить беседу", callback_data='end_conversation')]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+        else:
+            reply_markup = None
+
         # await context.bot.send_message(chat_id, text=response.choices[0].message.content, reply_markup=reply_markup)
         await context.bot.send_message(chat_id, text=response, reply_markup=reply_markup)
     except Exception as e:
         await context.bot.send_message(chat_id, text="Произошла ошибка: " + str(e))
-
-# async def get_response(update: Update, context: CallbackContext) -> None:
-#     user_input = update.message.text
-#     chat_id = update.message.chat_idxw
-#     message = await context.bot.send_message(chat_id, text="Готовлю для вас ответ...")
-#
-#     try:
-#         # Check if a thread already exists; otherwise, create a new one
-#         if 'thread_id' not in context.user_data:
-#             # Create a new thread for the conversation
-#             thread = openai.beta.threads.create()
-#             context.user_data['thread_id'] = thread.id
-#
-#         # Send the message to the assistant within the thread
-#         response = openai.beta.threads.messages.create(
-#             thread_id=context.user_data['thread_id'],
-#             role="user",
-#             content="user_input"
-#             model="gpt-3.5-turbo",
-#             messages=[{"role": "system", "content": "Ты - ассистент по выбору морепродуктов. Отвечай только на вопросы о рыбе и морепродуктах"},
-#                       {"role": "user", "content": user_input}]
-#         )
-#
-#         # Delete the "Preparing response..." message
-#         await context.bot.delete_message(chat_id, message.message_id)
-#
-#         # Setup the keyboard to allow ending the conversation
-#         keyboard = [[InlineKeyboardButton("Завершить беседу", callback_data='end_conversation')]]
-#         reply_markup = InlineKeyboardMarkup(keyboard)
-#
-#         # Extracting the assistant's last message from the response
-#         last_message = response['data'][-1]['content']
-#
-#         # Send the assistant's reply
-#         await context.bot.send_message(chat_id, text=last_message, reply_markup=reply_markup)
-#     except Exception as e:
-#         # Handle exceptions, e.g., API errors, by sending an error message to the user
-#         await context.bot.send_message(chat_id, text=f"Произошла ошибка: {str(e)}")
-
 
 
 def main() -> None:
