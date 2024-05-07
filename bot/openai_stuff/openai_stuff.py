@@ -23,7 +23,7 @@ class OpenAIAssistant:
         # Start a run after submitting the message
         return self.client.beta.threads.runs.create(
             thread_id=thread_id,
-            assistant_id=self.assistant_id,
+            assistant_id=self.assistant_id
         )
 
     def get_response(self, thread_id):
@@ -76,8 +76,8 @@ class OpenAIAssistant:
         return last_response
 
 
-# # Usage
-# if __name__ == "__main__":
-#     assistant = OpenAIAssistant("asst_Ti4C9k9Dw2Se3j9zxjqWGAoY")
-#     response_text = assistant.fetch_formatted_response("Реши математическую задачку")
-#     print(response_text)
+# Usage
+if __name__ == "__main__":
+    assistant = OpenAIAssistant("asst_Ti4C9k9Dw2Se3j9zxjqWGAoY")
+    response_text = assistant.fetch_formatted_response("Реши математическую задачку")
+    print(response_text)
