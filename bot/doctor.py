@@ -1,244 +1,176 @@
+import os
+from datetime import datetime as dt
+import asyncio
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ConversationHandler, filters, CallbackContext
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ForceReply
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, CallbackContext, ConversationHandler
 from telegram.constants import ChatAction
 
-import re
-
 from credentials import TOKEN
+from openai_stuff.openai_stuff import OpenAIAssistant
+from data_providers.google_sheets.google_sheets import GoogleSheetsClient
 
-# Настройка логирования
+
+TOKEN = TOKEN
+
+OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
+
+ASSISTANT_ID = "asst_84zHfX8FkiPGZaxX2BfAd2cm"
+ASSISTANT_GPT = OpenAIAssistant(OPENAI_API_KEY, ASSISTANT_ID)
+
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 # Configure the httpx logger to only output warnings or higher level messages
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
+FULL_NAME, PHONE_NUMBER, OTHER = range(3)
 
-# Определяем состояния разговора
-(NAME, PHONE, PROCEDURE, DOCTOR, DATE, TIME, CONFIRMATION) = range(7)
+GOOGLE_CREDENTIALS_PATH = '/Users/igor/__my_dev/doc_talk/bot/data_providers/google_sheets/sa-secret.json'
+SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1hqFgHAQ2nN6z2cBhrgv8HcXzcGdRA7O3ajkv-JTOJOo/edit#gid=0'
+GOOGLE_SHEETS_CLIENT = GoogleSheetsClient(GOOGLE_CREDENTIALS_PATH, SPREADSHEET_URL)
 
 
-async def start(update: Update, context: CallbackContext, from_back=False):
-    # Если функция вызвана через /cancel, update.message может быть None
-    if update.message:
-        chat_id = update.message.chat_id
-        command = update.message.text
-        if command == '/cancel':
-            # Если вызов произошел через команду /cancel, отправляем сообщение о сбросе
-            await update.message.reply_text('Диалог был сброшен. Давайте начнем заново!')
-            await asyncio.sleep(0.5)  # Задержка перед следующим сообщением
+async def start(update: Update, context: CallbackContext) -> None:
+    keyboard = [
+        [InlineKeyboardButton("Задать новый вопрос", callback_data='new_question')],
+        [InlineKeyboardButton("Продолжить предыдущий диалог", callback_data='continue')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        'Здравствуйте! 😊 Вас приветствует виртуальный ассистент стоматологической клиники. '
+        '🦷 Я готов помочь вам с любыми вопросами! '
+        'Вы можете узнать информацию о наших услугах, выбрать клинику, записаться на прием к врачу и многое другое. '
+        'пше Задавайте любой вопрос! 💬',
+        reply_markup=reply_markup
+    )
+
+
+async def handle_message(update: Update, context: CallbackContext) -> None:
+    await update.message.reply_text(
+        'Прошу выбрать из представленных вариантов ниже',
+        reply_markup=await start(update, context)
+    )
+
+
+async def handle_query(update: Update, context: CallbackContext) -> None:
+    query = update.callback_query
+    await query.answer()
+    if query.data == 'new_question':
+        context.user_data['chat_id'] = query.message.chat_id
+        context.user_data['thread'] = None
+        await query.edit_message_text(text="Введите ваш вопрос:")
+    elif query.data == 'continue':
+        if 'thread' in context.user_data:
+            await context.bot.send_message(chat_id=context.user_data['chat_id'],
+                                           text="Продолжаем предыдущий диалог. Введите ваш вопрос:")
         else:
-            # Приветствие при стандартном вызове команды /start
-            await update.message.reply_text('Привет! Я бот для записи в стоматологическую клинику')
-            await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-            await asyncio.sleep(0.5)  # Задержка для имитации печати
-    else:
-        # Если вызов произошел из callback_query (например, при возврате назад)
-        chat_id = update.callback_query.message.chat_id
-        await update.callback_query.answer()  # Ответ на callback_query
-        await update.callback_query.edit_message_text('Давайте начнем заново! Пожалуйста, введите ваше имя:')
-
-    # Отправка сообщения с запросом ввода имени
-    message = "Пожалуйста, введите ваше имя:"
-    await context.bot.send_message(chat_id=chat_id, text=message)
-    return NAME
+            await query.edit_message_text(text="Нет активных диалогов. Начните новый вопрос.")
+    elif query.data == 'end_conversation':
+        await query.edit_message_text(text="Спасибо за общение!")
+        context.user_data.clear()
 
 
-async def name(update: Update, context: CallbackContext, from_back=False):
-    keyboard = [[InlineKeyboardButton("Вернуться назад", callback_data='return_to_start')]]
+async def get_response(update: Update, context: CallbackContext) -> None:
+    user_input = update.message.text
+    chat_id = update.message.chat_id
+    tg_username = update.effective_user.username
+    context_thread_id = context.user_data.get('thread')
 
-    message = "Пожалуйста, введите ваш контактный номер телефона:"
-    if from_back:
-        await update.callback_query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
-    else:
-        chat_id = update.message.chat_id
-        context.user_data['name'] = update.message.text
-        logging.info(f"Сработала функция name. Пользователь ввел {context.user_data['name']}")
+    print(context.user_data)
 
-        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-        await asyncio.sleep(0.5)
+    # Send "typing..." action to show the bot is preparing a response
+    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
 
-        await update.message.reply_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
-    return PHONE
+    # Simulate some processing time (if needed)
+    await asyncio.sleep(1)  # Sleep for 1 second to mimic response time
 
+    try:
+        logging.info(f'QUESTION: tg_username: {tg_username} - {user_input}')
 
-async def phone(update: Update, context: CallbackContext, from_back=False):
-    keyboard = [
-        [InlineKeyboardButton("Терапевт", callback_data='Терапевт'),
-         InlineKeyboardButton("Хирург", callback_data='Хирург')],
-        [InlineKeyboardButton("Имплантолог", callback_data='Имплантолог'),
-         InlineKeyboardButton("Парадонтолог", callback_data='Парадонтолог')],
-        [InlineKeyboardButton("Профчистка", callback_data='Профчистка')],
-        [InlineKeyboardButton("Вернуться назад", callback_data='return_phone')]
-    ]
+        # Проверка, ожидается ли ввод ФИО или номера телефона
+        if context.user_data.get('awaiting_full_name'):
+            context.user_data['full_name'] = user_input
+            context.user_data['awaiting_full_name'] = False
+            # await update.message.reply_text('Спасибо, ваше ФИО сохранено.')
+            # return
 
-    message = "Выберите направление:"
-    if from_back:
-        await update.callback_query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
-    else:
-        phone_number = update.message.text
+        if context.user_data.get('awaiting_phone_number'):
+            context.user_data['phone_number'] = user_input
+            context.user_data['awaiting_phone_number'] = False
+            # await update.message.reply_text('Спасибо, ваш номер телефона сохранен.')
+            # return
 
-        if not re.match(r"^((8|\+7)[\-]?)?(\(?\d{3}\)?[\-]?)?[\d\-]{7,10}$", phone_number):
-            await update.message.reply_text("Некорректный номер, попробуйте еще раз:")
-            return PHONE
-        context.user_data['phone'] = phone_number
+        if context_thread_id:
+            response, _ = ASSISTANT_GPT.fetch_formatted_response(user_input=user_input, thread_id=context_thread_id)
+        else:
+            response, thread_id = ASSISTANT_GPT.fetch_formatted_response(user_input=user_input)
+            context.user_data['thread'] = thread_id
 
-        logging.info(f"Сработала функция phone. Пользователь ввел {phone_number}")
+        logging.info(f'ANSWER: tg_username: {tg_username} - {response}')
 
-        await update.message.reply_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
-    return PROCEDURE
+        if not context.user_data.get('full_name') and ("фио" in response.lower() or 'вас зовут' in response.lower()
+                                                       or 'ваше полное имя' in response.lower()):
+            # await update.message.reply_text("Пожалуйста, введите ваше полное имя (ФИО):")
+            context.user_data['awaiting_full_name'] = True
+            # return
 
+        elif not context.user_data.get('phone_number') and ("контактный телефон" in response.lower()
+                                                            or 'номер телефона' in response.lower()):
+            # await update.message.reply_text("Пожалуйста, введите ваш номер телефона:")
+            context.user_data['awaiting_phone_number'] = True
+            # return
+        elif "ДЕТАЛИ ЗАПИСИ:" in response:
+            new_row = [dt.now().strftime('%d-%m-%Y'),
+                       tg_username,
+                       context.user_data['full_name'],
+                       context.user_data['phone_number']]
+            GOOGLE_SHEETS_CLIENT.append_row(new_row)
+            context.user_data.clear()
 
-async def procedure(update: Update, context: CallbackContext, from_back=False):
-    query = update.callback_query
-    await query.answer()
-    context.user_data['procedure'] = query.data
-    logging.info(f"Сработала функция phone. Пользователь ввел {context.user_data['name']}")
-    keyboard = [
-        [InlineKeyboardButton("Доктор Игорь", callback_data='Доктор Игорь')],
-        [InlineKeyboardButton("Доктор Яков", callback_data='Доктор Яков')],
-        [InlineKeyboardButton("Вернуться назад", callback_data='return_procedure')]
-    ]
-    message = "Выберите доктора:"
+        await context.bot.send_message(chat_id, text=response)
 
-    logging.info(f"Сработала функция procedure. Пользователь ввел {context.user_data['procedure'] }")
-
-    if from_back:
-        await update.callback_query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
-    else:
-        await query.edit_message_text(text=message, reply_markup=InlineKeyboardMarkup(keyboard))
-    return DOCTOR
+    except Exception as e:
+        await context.bot.send_message(chat_id, text="Произошла ошибка: " + str(e))
 
 
-async def doctor(update: Update, context: CallbackContext, from_back=False):
-    query = update.callback_query
-    await query.answer()
-    context.user_data['doctor'] = query.data
-    keyboard = [
-        [InlineKeyboardButton("10.05.2024", callback_data='10.05.2024'),
-         InlineKeyboardButton("12.05.2024", callback_data='12.05.2024')],
-        [InlineKeyboardButton("Вернуться назад", callback_data='return_doctor')]
-    ]
-    message = "Выберите дату приема:"
 
-    logging.info(f"Сработала функция doctor. Пользователь ввел {context.user_data['doctor']}")
+async def ask_for_full_name(update: Update, context: CallbackContext):
+    logging.info(f'ask_for_full_name')
+    # await update.message.reply_text("Please enter your full name (ФИО):", reply_markup=ForceReply(selective=True))
+    return FULL_NAME
 
-    if from_back:
-        await update.callback_query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
-    else:
-        await query.edit_message_text(text=message, reply_markup=InlineKeyboardMarkup(keyboard))
-    return DATE
+async def ask_for_phone_number(update: Update, context: CallbackContext):
+    logging.info(f'ask_for_phone_number')
+    context.user_data['full_name'] = update.message.text
+    # await update.message.reply_text("Please enter your phone number:", reply_markup=ForceReply(selective=True))
+    return PHONE_NUMBER
 
-
-async def date(update: Update, context: CallbackContext, from_back=False):
-    query = update.callback_query
-    await query.answer()
-    context.user_data['date'] = query.data
-    keyboard = [
-        [InlineKeyboardButton("10:00", callback_data='10:00'),
-         InlineKeyboardButton("11:00", callback_data='11:00')],
-        [InlineKeyboardButton("Вернуться назад", callback_data='return_date')]
-    ]
-    message = "Выберите время приема:"
-
-    logging.info(f"Сработала функция date. Пользователь ввел {context.user_data['date']}")
-
-    if from_back:
-        await update.callback_query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
-    else:
-        await query.edit_message_text(text=message, reply_markup=InlineKeyboardMarkup(keyboard))
-    return TIME
-
-
-async def time(update: Update, context: CallbackContext, from_back=False):
-    query = update.callback_query
-    await query.answer()
-    context.user_data['time'] = query.data
-
-    user_name = context.user_data['name']
-    user_phone = context.user_data['phone']
-    procedure = context.user_data['procedure']
-    doctor = context.user_data['doctor']
-    date = context.user_data['date']
-    time = context.user_data['time']
-
-    keyboard = [
-        [InlineKeyboardButton("Подтвердить запись", callback_data='confirm')],
-        [InlineKeyboardButton("Вернуться назад", callback_data='return_time')]
-    ]
-    message = f"Уважаемый {user_name}, Вы будете записаны к {doctor}({procedure}) на {date} в {time}"
-
-    logging.info(f"Сработала функция time. Пользователь ввел {context.user_data['time']}")
-
-    if from_back:
-        await update.callback_query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
-    else:
-        await query.edit_message_text(text=message, reply_markup=InlineKeyboardMarkup(keyboard))
-    return CONFIRMATION
-
-
-async def back_to_previous(update: Update, context: CallbackContext):
-    print('Invoked: back_to_previous')
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-
-    logging.info(f"Received callback data: {data}")  # Логируем полученные данные
-
-    handlers = {
-        'return_to_start': (start, NAME),
-        'return_phone': (name, PHONE),
-        'return_procedure': (phone, PROCEDURE),
-        'return_doctor': (doctor, DOCTOR),
-        'return_date': (date, DATE),
-        'return_time': (time, TIME)
-    }
-
-    if data in handlers:
-        handler_function, state = handlers[data]
-        logging.info(f"Calling handler {handler_function.__name__} with state {state}")
-        return await handler_function(update, context, from_back=True)
-
-    logging.error(f"No handler found for data: {data}")
+async def cancel(update: Update, context: CallbackContext):
+    await update.message.reply_text('Registration canceled.')
     return ConversationHandler.END
 
 
-def main():
+def main() -> None:
     application = Application.builder().token(TOKEN).build()
-    # application.add_handler(CommandHandler(['start', 'menu'], start))
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler(['start', 'menu'], start)],
-        states={
-            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, name)],
-            PHONE: [
-                CallbackQueryHandler(back_to_previous, pattern='^return_'),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, phone)
-            ],
-            PROCEDURE: [
-                CallbackQueryHandler(back_to_previous, pattern='^return_'),
-                CallbackQueryHandler(procedure)
-            ],
-            DOCTOR: [
-                CallbackQueryHandler(back_to_previous, pattern='^return_'),
-                CallbackQueryHandler(doctor),
-            ],  # Add appropriate handlers
-            DATE: [
-                CallbackQueryHandler(back_to_previous, pattern='^return_'),
-                CallbackQueryHandler(date),
-            ],  # Add appropriate handlers
-            TIME: [
-                CallbackQueryHandler(back_to_previous, pattern='^return_'),
-                CallbackQueryHandler(time),
-            ],  # Add appropriate handlers
-            CONFIRMATION: []  # Add appropriate handlers
-        },
-        fallbacks=[CommandHandler('cancel', start)],  # Option for canceling or restarting the dialog
-        # per_message=True  # Устанавливаем per_message в True
-    )
 
-    application.add_handler(conv_handler)
+    application.add_handler(CommandHandler('start', start))
+    # # application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(CallbackQueryHandler(handle_query))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, get_response))
+    #
+    # conv_handler = ConversationHandler(
+    #     entry_points=[CallbackQueryHandler(handle_query)],
+    #     states={
+    #         FULL_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_for_full_name)],
+    #         PHONE_NUMBER: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_for_phone_number)],
+    #         OTHER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_response)]
+    #     },
+    #     fallbacks=[CommandHandler('cancel', cancel)]
+    # )
+
+    # application.add_handler(conv_handler)
     application.run_polling()
 
 
 if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+    main()
