@@ -101,7 +101,7 @@ async def get_response(update: Update, context: CallbackContext) -> None:
     await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
 
     # Simulate some processing time (if needed)
-    await asyncio.sleep(1)  # Sleep for 1 second to mimic response time
+    await asyncio.sleep(1.2)  # Sleep for 1 second to mimic response time
 
     try:
         logging.info(f'QUESTION: tg_username: {tg_username} - {user_input}')
