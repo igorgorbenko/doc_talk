@@ -1,0 +1,7 @@
+{
+    "bot_name": {
+        "TOKEN": "TOKEN",
+        "GOOGLE_SHEET_URL": "GOOGLE_SHEET_URL",
+        "ASSISTANT_ID": "ASSISTANT_ID"
+    }
+}

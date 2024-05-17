@@ -1,4 +1,6 @@
 import os
+import json
+import argparse
 from datetime import datetime as dt
 import asyncio
 import logging
@@ -7,16 +9,31 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ForceRe
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, CallbackContext, ConversationHandler
 from telegram.constants import ChatAction
 
-from credentials import TOKEN
 from openai_stuff.openai_stuff import OpenAIAssistant
 from data_providers.google_sheets.google_sheets import GoogleSheetsClient
 
 
-TOKEN = TOKEN
+parser = argparse.ArgumentParser(description="Запуск Telegram бота с параметрами.")
+parser.add_argument('--bot_name', type=str, required=True, help="Имя бота")
+parser.add_argument('--config', type=str, required=True, help="Путь к файлу конфигурации JSON")
+args = parser.parse_args()
+
+with open(args.config, 'r') as json_file:
+    config = json.load(json_file)
+
+if args.bot_name in config:
+    bot_config = config[args.bot_name]
+else:
+    raise ValueError(f"Конфигурация для бота с именем {args.bot_name} не найдена.")
+
+TOKEN = bot_config["TOKEN"]
+GOOGLE_SHEET_URL = bot_config["GOOGLE_SHEET_URL"]
+ASSISTANT_ID = bot_config["ASSISTANT_ID"]
+GREETINGS_MESSAGE = bot_config["GREETINGS_MESSAGE"]
 
 OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
+GOOGLE_CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH')
 
-ASSISTANT_ID = "asst_84zHfX8FkiPGZaxX2BfAd2cm"
 ASSISTANT_GPT = OpenAIAssistant(OPENAI_API_KEY, ASSISTANT_ID)
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -25,9 +42,13 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 FULL_NAME, PHONE_NUMBER, OTHER = range(3)
 
-GOOGLE_CREDENTIALS_PATH = '/Users/igor/__my_dev/doc_talk/bot/data_providers/google_sheets/sa-secret.json'
-SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1hqFgHAQ2nN6z2cBhrgv8HcXzcGdRA7O3ajkv-JTOJOo/edit#gid=0'
-GOOGLE_SHEETS_CLIENT = GoogleSheetsClient(GOOGLE_CREDENTIALS_PATH, SPREADSHEET_URL)
+GOOGLE_SHEETS_CLIENT = GoogleSheetsClient(GOOGLE_CREDENTIALS_PATH, GOOGLE_SHEET_URL)
+
+
+from openai import OpenAI
+OpenAI.api_key = OPENAI_API_KEY
+client = OpenAI()
+
 
 
 async def start(update: Update, context: CallbackContext) -> None:
@@ -36,13 +57,7 @@ async def start(update: Update, context: CallbackContext) -> None:
         [InlineKeyboardButton("Продолжить предыдущий диалог", callback_data='continue')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        'Здравствуйте! 😊 Вас приветствует виртуальный ассистент стоматологической клиники. '
-        '🦷 Я готов помочь вам с любыми вопросами! '
-        'Вы можете узнать информацию о наших услугах, выбрать клинику, записаться на прием к врачу и многое другое. '
-        'пше Задавайте любой вопрос! 💬',
-        reply_markup=reply_markup
-    )
+    await update.message.reply_text(GREETINGS_MESSAGE, reply_markup=reply_markup)
 
 
 async def handle_message(update: Update, context: CallbackContext) -> None:
@@ -76,7 +91,11 @@ async def get_response(update: Update, context: CallbackContext) -> None:
     tg_username = update.effective_user.username
     context_thread_id = context.user_data.get('thread')
 
-    print(context.user_data)
+    transcript = context.user_data.get('transcript')
+    if transcript:
+        user_input = transcript
+    else:
+        user_input = update.message.text
 
     # Send "typing..." action to show the bot is preparing a response
     await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
@@ -133,6 +152,41 @@ async def get_response(update: Update, context: CallbackContext) -> None:
         await context.bot.send_message(chat_id, text="Произошла ошибка: " + str(e))
 
 
+async def handle_voice_message(update: Update, context: CallbackContext):
+    logging.info('handle_voice_message called')
+    voice_file = await update.message.voice.get_file()
+    file_path = f'voice_{update.message.message_id}.ogg'
+    await voice_file.download_to_drive(file_path)
+    await update.message.reply_text("Голосовое сообщение получено, обрабатывается...")
+
+    try:
+        # Преобразование голосового сообщения в текст с использованием OpenAI Whisper
+        with open(file_path, "rb") as audio_file:
+            audio_bytes = audio_file.read()
+
+        transcript = transcribe_audio_with_openai(audio_bytes, file_path)
+        logging.info(f'Transcribed text: {transcript}')
+
+        # Сохранение транскрипции в контексте
+        context.user_data['transcript'] = transcript
+
+        # Вызов функции get_response
+        await get_response(update, context)
+
+    finally:
+        # Удаление файла после обработки
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+
+def transcribe_audio_with_openai(audio_bytes, file_path):
+    with open(file_path, "rb") as audio_file:
+        response = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file
+        )
+    return response.text
+
 
 async def ask_for_full_name(update: Update, context: CallbackContext):
     logging.info(f'ask_for_full_name')
@@ -156,6 +210,7 @@ def main() -> None:
     application.add_handler(CommandHandler('start', start))
     # # application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CallbackQueryHandler(handle_query))
+    application.add_handler(MessageHandler(filters.VOICE, handle_voice_message))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, get_response))
     #
     # conv_handler = ConversationHandler(

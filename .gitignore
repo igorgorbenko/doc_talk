@@ -4,4 +4,6 @@
 /credentials.json
 /token.json
 bot/__pycache__/
+**/__pycache__/
+bot/bots_config.json
 
