@@ -85,14 +85,14 @@ async def handle_query(update: Update, context: CallbackContext) -> None:
 
 
 async def get_response(update: Update, context: CallbackContext) -> None:
-    user_input = update.message.text
     chat_id = update.message.chat_id
     tg_username = update.effective_user.username
     context_thread_id = context.user_data.get('thread')
 
-    transcript = context.user_data.get('transcript')
-    if transcript:
-        user_input = transcript
+    # Проверяем, было ли последнее сообщение голосовым
+    if 'transcript' in context.user_data:
+        user_input = context.user_data['transcript']
+        del context.user_data['transcript']
     else:
         user_input = update.message.text
 
