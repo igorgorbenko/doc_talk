@@ -4,6 +4,7 @@ import argparse
 from datetime import datetime as dt
 import asyncio
 import logging
+import httpx
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ForceReply
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, CallbackContext, ConversationHandler
@@ -44,11 +45,9 @@ FULL_NAME, PHONE_NUMBER, OTHER = range(3)
 
 GOOGLE_SHEETS_CLIENT = GoogleSheetsClient(GOOGLE_CREDENTIALS_PATH, GOOGLE_SHEET_URL)
 
-
 from openai import OpenAI
 OpenAI.api_key = OPENAI_API_KEY
 client = OpenAI()
-
 
 
 async def start(update: Update, context: CallbackContext) -> None:
@@ -183,7 +182,9 @@ def transcribe_audio_with_openai(audio_bytes, file_path):
     with open(file_path, "rb") as audio_file:
         response = client.audio.transcriptions.create(
             model="whisper-1",
-            file=audio_file
+            file=audio_file,
+            timeout=httpx.Timeout(10)
+            # timeout=httpx.Timeout(15.0, read=5.0, write=10.0, connect=3.0)
         )
     return response.text
 
@@ -222,9 +223,15 @@ def main() -> None:
     #     },
     #     fallbacks=[CommandHandler('cancel', cancel)]
     # )
+    # Добавление обработчика ошибок
+    application.add_error_handler(error_handler)
 
     # application.add_handler(conv_handler)
     application.run_polling()
+
+
+async def error_handler(update: Update, context: CallbackContext) -> None:
+    logging.error(msg="Exception while handling an update:", exc_info=context.error)
 
 
 if __name__ == '__main__':
