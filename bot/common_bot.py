@@ -96,11 +96,8 @@ async def get_response(update: Update, context: CallbackContext) -> None:
     else:
         user_input = update.message.text
 
-    # Send "typing..." action to show the bot is preparing a response
     await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-
-    # Simulate some processing time (if needed)
-    await asyncio.sleep(1.2)  # Sleep for 1 second to mimic response time
+    await asyncio.sleep(1.2)
 
     try:
         logging.info(f'QUESTION: tg_username: {tg_username} - {user_input}')
@@ -159,34 +156,35 @@ async def handle_voice_message(update: Update, context: CallbackContext):
     await update.message.reply_text("Голосовое сообщение получено, обрабатывается...")
 
     try:
-        # Преобразование голосового сообщения в текст с использованием OpenAI Whisper
-        with open(file_path, "rb") as audio_file:
-            audio_bytes = audio_file.read()
-
-        transcript = transcribe_audio_with_openai(audio_bytes, file_path)
+        transcript = await transcribe_audio_with_openai(file_path)
         logging.info(f'Transcribed text: {transcript}')
-
-        # Сохранение транскрипции в контексте
         context.user_data['transcript'] = transcript
-
-        # Вызов функции get_response
         await get_response(update, context)
-
     finally:
         # Удаление файла после обработки
         if os.path.exists(file_path):
             os.remove(file_path)
 
 
-def transcribe_audio_with_openai(audio_bytes, file_path):
-    with open(file_path, "rb") as audio_file:
-        response = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=audio_file,
-            timeout=httpx.Timeout(10)
-            # timeout=httpx.Timeout(15.0, read=5.0, write=10.0, connect=3.0)
-        )
-    return response.text
+async def transcribe_audio_with_openai(file_path):
+    try:
+        with open(file_path, "rb") as audio_file:
+            response = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                timeout=httpx.Timeout(10)
+                # timeout=httpx.Timeout(15.0, read=5.0, write=10.0, connect=3.0)
+            )
+        return response.text
+    except httpx.RequestError as e:
+        logging.error(f"An error occurred while requesting: {e}")
+        raise
+    except httpx.HTTPStatusError as e:
+        logging.error(f"Error response {e.response.status_code} while requesting {e.request.url}")
+        raise
+    except Exception as e:
+        logging.error(f"Error while the calling the transcribe_audio_with_openai {str(e)}")
+        raise
 
 
 async def ask_for_full_name(update: Update, context: CallbackContext):
@@ -194,15 +192,21 @@ async def ask_for_full_name(update: Update, context: CallbackContext):
     # await update.message.reply_text("Please enter your full name (ФИО):", reply_markup=ForceReply(selective=True))
     return FULL_NAME
 
+
 async def ask_for_phone_number(update: Update, context: CallbackContext):
     logging.info(f'ask_for_phone_number')
     context.user_data['full_name'] = update.message.text
     # await update.message.reply_text("Please enter your phone number:", reply_markup=ForceReply(selective=True))
     return PHONE_NUMBER
 
+
 async def cancel(update: Update, context: CallbackContext):
     await update.message.reply_text('Registration canceled.')
     return ConversationHandler.END
+
+
+async def error_handler(update: Update, context: CallbackContext) -> None:
+    logging.error(msg="Exception while handling an update:", exc_info=context.error)
 
 
 def main() -> None:
@@ -228,10 +232,6 @@ def main() -> None:
 
     # application.add_handler(conv_handler)
     application.run_polling()
-
-
-async def error_handler(update: Update, context: CallbackContext) -> None:
-    logging.error(msg="Exception while handling an update:", exc_info=context.error)
 
 
 if __name__ == '__main__':
