@@ -2,31 +2,40 @@ import asyncio
 import logging
 import os
 import re
-
-import pytesseract
-from PIL import Image
-import cv2
+import base64
+import httpx
 
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, WebAppInfo, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackContext, filters
 from telegram.constants import ChatAction
 
 from openai_stuff.openai_stuff import OpenAIAssistant
+from openai import OpenAI
 
 # Установка переменной окружения для Tesseract
 os.environ["TESSDATA_PREFIX"] = "/opt/homebrew/share/tessdata/"
 
 TOKEN = ""
-BOT_USERNAME = ""
+BOT_USERNAME = "ai_assist_travel_bot"
+
 ASSISTANT_ID = ""
 OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
-
 ASSISTANT_GPT = OpenAIAssistant(OPENAI_API_KEY, ASSISTANT_ID)
+
+OpenAI.api_key = OPENAI_API_KEY
+client = OpenAI()
+
 
 # Настройка логирования
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 # Configure the httpx logger to only output warnings or higher level messages
 logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
+# Function to encode the image
+def encode_image(image_path):
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode('utf-8')
 
 
 async def get_balance(update: Update, context: CallbackContext) -> None:
@@ -106,20 +115,41 @@ async def handle_operator(update: Update, context: CallbackContext, user_input: 
         logging.error("Произошла ошибка: " + str(e))
         return "Произошла ошибка при обработке вашего запроса. Пожалуйста, попробуйте еще раз."
 
-# Функция предварительной обработки изображения
-def preprocess_image(file_path):
-    img = cv2.imread(file_path)
 
-    # Конвертация в оттенки серого
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+async def recognize_total_amount(image_path):
+    base64_image = encode_image(image_path)
 
-    # Применение пороговой обработки
-    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
-
-    # Сохранение обработанного изображения
-    processed_image_path = file_path.replace(".jpg", "_processed.jpg")
-    cv2.imwrite(processed_image_path, thresh)
-    return processed_image_path
+    try:
+        with open(image_path, "rb") as image_file:
+            response = client.chat.completions.create(
+                model="gpt-4-turbo",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Найди итоговую сумму чека и выведи результат только эту сумму. "
+                                                     "Никакие другие слова не выводи"},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{base64_image}"
+                                },
+                            },
+                        ],
+                    }
+                ],
+                max_tokens=10
+            )
+        return response.choices[0].message.content
+    except httpx.RequestError as e:
+        logging.error(f"An error occurred while requesting: {e}")
+        raise
+    except httpx.HTTPStatusError as e:
+        logging.error(f"Error response {e.response.status_code} while requesting {e.request.url}")
+        raise
+    except Exception as e:
+        logging.error(f"Error while the calling the transcribe_audio_with_openai {str(e)}")
+        raise
 
 
 # Обработка загрузки фотографии
@@ -127,45 +157,15 @@ async def handle_photo(update: Update, context: CallbackContext) -> None:
     photo_file = await update.message.photo[-1].get_file()
     file_path = os.path.join("/tmp", f"{photo_file.file_id}.jpg")
     await photo_file.download_to_drive(file_path)
+    await update.message.reply_text("Фотограция получена, обрабатывается...")
 
     # Предварительная обработка изображения и распознавание текста
-    processed_image_path = preprocess_image(file_path)
-    total_amount = recognize_total_amount(processed_image_path)
+    total_amount = await recognize_total_amount(file_path)
 
     if total_amount:
         await update.message.reply_text(f"Сумма на чеке: {total_amount} руб.")
     else:
         await update.message.reply_text("Не удалось распознать сумму на чеке. Пожалуйста, попробуйте еще раз.")
-
-
-def recognize_total_amount(file_path):
-    # Убедитесь, что TESSDATA_PREFIX правильно настроен
-    tessdata_prefix = os.getenv('TESSDATA_PREFIX')
-    if tessdata_prefix:
-        print(f"TESSDATA_PREFIX is set to: {tessdata_prefix}")
-    else:
-        print("TESSDATA_PREFIX is not set")
-
-    # Распознавание текста с помощью Tesseract
-    text = pytesseract.image_to_string(Image.open(file_path), lang='rus')
-    logging.info(f"Распознанный текст: {text}")
-
-    # Поиск строки "Итого к оплате" и суммы
-    lines = text.split('\n')
-    for line in lines:
-        if any(phrase in line.lower() for phrase in ["итого к оплате", "к оплате"]):
-            # Извлечение суммы
-            amount = extract_amount(line)
-            return amount
-    return None
-
-def extract_amount(text):
-    # Использование регулярного выражения для поиска суммы
-    import re
-    match = re.search(r'\d+[\.,]?\d*', text)
-    if match:
-        return match.group().replace(',', '.')
-    return None
 
 
 # Обработка сообщений от пользователя

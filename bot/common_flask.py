@@ -4,7 +4,7 @@
 # from telegram import Update, KeyboardButton, WebAppInfo, ReplyKeyboardMarkup
 # from telegram.ext import Application, CommandHandler, CallbackContext, MessageHandler, filters
 #
-# TOKEN = "7093994454:AAGDuUb-NF5oNmVLffcbJztQfOsCx5zqynA"
+# TOKEN = ""
 #
 # app = Flask(__name__)
 # webapp_path = os.path.join(os.getcwd(), 'webapp')
