@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, render_template
 from .models import db, User, Vendor, Service, Booking, Visit, Receipt, Cashback, Review
 from .schemas import UserSchema, VendorSchema, ServiceSchema, BookingSchema, VisitSchema, ReceiptSchema, CashbackSchema, ReviewSchema
 from .crud import create_user, create_vendor
@@ -29,10 +29,17 @@ cashbacks_schema = CashbackSchema(many=True)
 review_schema = ReviewSchema()
 reviews_schema = ReviewSchema(many=True)
 
+
+@bp.route('/')
+def index():
+    return render_template('index.html')
+
+
 @bp.route('/users', methods=['POST'])
 def add_user():
     data = request.json
     new_user = create_user(data)
+    print(new_user)
     return user_schema.jsonify(new_user)
 
 @bp.route('/vendors', methods=['POST'])
