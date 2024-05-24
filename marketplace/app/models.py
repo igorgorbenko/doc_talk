@@ -64,6 +64,7 @@ class Service(db.Model):
     name = Column(String(100))
     description = Column(Text)
     price = Column(DECIMAL(10, 2))
+    image_url = Column(String(255))  # Добавляем поле для URL изображения
     created_at = Column(TIMESTAMP, server_default=db.func.current_timestamp())
 
     # Relationship definitions

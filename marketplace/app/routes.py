@@ -59,6 +59,10 @@ def view_user():
 def view_vendor():
     return render_template('add_vendor.html')
 
+@bp.route('/view_item')
+def view_item():
+    return render_template('view_item.html')
+
 
 @bp.route('/add_user', methods=['POST'])
 def add_user():
