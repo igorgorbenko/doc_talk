@@ -1,7 +1,16 @@
-from . import db
-from sqlalchemy import Column, Integer, String, Enum, ForeignKey, DECIMAL, Boolean, TIMESTAMP, Text
-from sqlalchemy.orm import relationship
 import enum
+
+from . import db
+from sqlalchemy import Column, Integer, String, Enum, ForeignKey, DECIMAL, Boolean, TIMESTAMP, Text, Sequence
+from sqlalchemy.orm import relationship
+from sqlalchemy.ext.declarative import declarative_base
+
+from marshmallow_enum import EnumField
+from marshmallow import Schema, fields, post_load
+
+
+Base = declarative_base()
+
 
 class VendorType(enum.Enum):
     Hotel = "Hotel"
@@ -9,32 +18,44 @@ class VendorType(enum.Enum):
     TourOperator = "TourOperator"
     Yacht = "Yacht"
 
+class UserType(enum.Enum):
+    Admin = 'Admin'
+    User = 'User'
+    Vendor = 'Vendor'
+
 class User(db.Model):
     __tablename__ = 'users'
     user_id = Column(Integer, primary_key=True)
+    card_number = Column(Integer, Sequence('card_number_seq'), unique=True)
+    user_type = Column(Enum(UserType))
+    vendor_id = Column(Integer, ForeignKey('vendors.vendor_id'), nullable=True)
+    tg_username = Column(String(100), unique=True, index=True)
     name = Column(String(100))
-    tg_username = Column(String(100))
-    email = Column(String(100), unique=True, index=True)
+    email = Column(String(100), unique=True)
     phone = Column(String(15))
-    created_at = Column(TIMESTAMP, server_default=db.func.localtimestamp())
+    created_at = Column(TIMESTAMP, server_default=db.func.utctimestamp())
 
     # Relationship definitions
     bookings = relationship("Booking", back_populates="user")
     receipts = relationship("Receipt", back_populates="user")
     reviews = relationship("Review", back_populates="user")
+    vendor = relationship("Vendor", back_populates="users", foreign_keys=[vendor_id])
+
 
 class Vendor(db.Model):
     __tablename__ = 'vendors'
     vendor_id = Column(Integer, primary_key=True)
-    name = Column(String(100))
-    type = Column(Enum(VendorType))
+    name = Column(String(100), unique=True, index=True)
+    type = EnumField(VendorType, by_value=True)
     address = Column(String(255))
     contact_info = Column(String(100))
     created_at = Column(TIMESTAMP, server_default=db.func.current_timestamp())
 
     # Relationship definitions
+    users = relationship("User", back_populates="vendor")
     services = relationship("Service", back_populates="vendor")
     cashbacks = relationship("Cashback", back_populates="vendor")
+
 
 class Service(db.Model):
     __tablename__ = 'services'
