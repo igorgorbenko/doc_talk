@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Личный кабинет</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+        }
+        .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #4CAF50;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 1.8em;
+            color: #4CAF50;
+        }
+        .profile {
+            display: flex;
+            flex-direction: column;
+            margin: 20px 0;
+        }
+        .profile .details {
+            padding: 10px;
+        }
+        .profile .details h2 {
+            margin: 0 0 10px;
+            font-size: 1.4em;
+            color: #333;
+        }
+        .profile .details p {
+            margin: 5px 0;
+            color: #666;
+        }
+        .cashback {
+            text-align: center;
+            padding: 20px;
+            background-color: #e7f4e8;
+            border-radius: 10px;
+            border: 1px solid #4CAF50;
+            margin-top: 20px;
+        }
+        .cashback h2 {
+            margin: 0;
+            font-size: 1.6em;
+            color: #4CAF50;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #999;
+            border-top: 1px solid #ddd;
+            margin-top: 20px;
+        }
+        @media (min-width: 600px) {
+            .container {
+                max-width: 80%;
+            }
+            .profile {
+                flex-direction: row;
+                justify-content: space-between;
+            }
+            .header h1 {
+                font-size: 2em;
+            }
+            .profile .details h2 {
+                font-size: 1.5em;
+            }
+            .cashback h2 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Личный кабинет</h1>
+        </div>
+        <div class="profile">
+            <div class="details">
+                <h2 id="tg_name">Имя пользователя</h2>
+                <p><strong>tg_username:</strong> <span id="tg_username">tg_username</span></p>
+            </div>
+        </div>
+        <div class="card_number">
+            <h2 id="card_number">Номер вашей карты: </h2>
+        </div>
+        <div class="cashback">
+            <h2 id="cashback">Накопленный кешбек: 0 руб.</h2>
+        </div>
+        <div class="footer">
+            &copy; 2024 Рога и Копыта. Все права защищены.
+        </div>
+    </div>
+    <script>
+        // Функция для получения параметров из URL
+        function getQueryParams() {
+            const params = new URLSearchParams(window.location.search);
+            return {
+                tg_username: params.get('tg_username'),
+                tg_first_name: params.get('tg_first_name'),
+                tg_last_name: params.get('tg_last_name'),
+                cashback: params.get('cashback'),
+                card_number: params.get('card_number'),
+            };
+        }
+
+        // Получение параметров из URL и установка значений
+        const params = getQueryParams();
+        document.getElementById('tg_username').innerText = params.tg_username || 'Не указано';
+        document.getElementById('tg_name').innerText = params.tg_first_name + ' ' + params.tg_last_name || 'Не указано';
+        document.getElementById('cashback').innerText = `Накопленный кешбек: ${params.cashback || 0} руб.`;
+        document.getElementById('card_number').innerText = `Номер вашей карты: ${params.card_number || 'Не указано'}`;
+    </script>
+</body>
+</html>

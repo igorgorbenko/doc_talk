@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View/Edit Clients</title>
+    <link rel="stylesheet" href="../static/css/styles.css">
+</head>
+<body>
+    <form id="userForm" action="/submit_service" method="post" enctype="multipart/form-data">
+        <h1>Create New Service</h1>
+
+        <div id="vendorSelect">
+            <label for="vendor_id">Select Vendor:</label>
+            <select id="vendor_id" name="vendor_id">
+                <!-- Опции будут добавлены динамически -->
+            </select>
+        </div>
+
+        <div>
+            <label for="name">Service name:</label>
+            <input type="text" id="name" name="name" required>
+        </div>
+
+        <div>
+            <label for="description">Service description:</label>
+            <textarea id="description" name="description" rows="5" cols="54"></textarea>
+        </div>
+
+        <div>
+            <label for="price">Price:</label>
+            <input type="text" id="price" name="price">
+        </div>
+
+        <h3>Upload Image to Server</h3>
+        <div>
+            <label for="fileUpload">Select an image to upload:</label>
+            <input type="file" id="fileUpload" name="fileUpload">
+        </div>
+
+        <button type="submit">Submit</button>
+
+        <div id="message"></div> <!-- Добавленный элемент для вывода сообщений -->
+        <a href="/">Back to Dashboard</a>
+    </form>
+
+    <table id="serviceTable">
+        <thead>
+            <tr>
+                <th>Vendor name</th>
+                <th>Service name</th>
+                <th>Service description</th>
+                <th>Price</th>
+                <th>Image URL</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- User data will be inserted here -->
+        </tbody>
+    </table>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            fetchVendors();
+            fetchServices();
+            document.getElementById('userForm').addEventListener('submit', async function(e) {
+                e.preventDefault(); // Предотвратить стандартную отправку формы
+                await submitServiceForm();
+            });
+        });
+
+        async function fetchVendors() {
+            const response = await fetch('http://127.0.0.1:8000/get_vendors');
+            const vendors = await response.json();
+            const vendorSelect = document.getElementById('vendor_id');
+            // console.log(vendorSelect); // Это покажет `null`, если элемент не найден
+
+            if (vendorSelect) {
+                vendorSelect.innerHTML = '';  // Очищаем существующие опции
+                vendors.forEach(vendor => {
+                    const option = new Option(vendor.name, vendor.vendor_id);
+                    vendorSelect.appendChild(option);
+                });
+            } else {
+                console.error('Vendor select element not found');
+            }
+        }
+
+        async function fetchServices() {
+            const response = await fetch('http://127.0.0.1:8000/get_services');
+            const services = await response.json();
+            const tableBody = document.getElementById('serviceTable').getElementsByTagName('tbody')[0];
+            tableBody.innerHTML = ''; // Очистить текущие строки таблицы
+            services.forEach(service => {
+                const row = tableBody.insertRow();
+                row.insertCell(0).textContent = service.vendor_name;
+                row.insertCell(1).textContent = service.name;
+                row.insertCell(2).textContent = service.description;
+                row.insertCell(3).textContent = service.price.toFixed(2);
+                row.insertCell(4).textContent = service.image_url;
+            });
+        }
+
+        async function submitServiceForm() {
+            const formData = new FormData(document.getElementById('userForm'));
+            const response = await fetch('http://127.0.0.1:8000/add_service', {
+                method: 'POST',
+                body: formData  // FormData will correctly handle the file upload
+            });
+
+            const result = await response.json();
+            const messageDiv = document.getElementById('message');
+            if (response.ok) {
+                messageDiv.textContent = 'Service created successfully! Image URL: ' + result.image_url;
+                messageDiv.style.color = 'green';
+                document.getElementById('userForm').reset();
+                fetchServices(); // Обновить таблицу после добавления новой услуги
+            } else {
+                messageDiv.textContent = 'Failed to create service: ' + result.message;
+                messageDiv.style.color = 'red';
+            }
+        }
+
+    </script>
+</body>
+</html>

@@ -14,4 +14,12 @@ def create_vendor(data):
     db.session.commit()
     return vendor
 
+
+def create_service(data):
+    service = Service(**data)
+    db.session.add(service)
+    db.session.commit()
+    return service
+
+
 # Similarly, add CRUD functions for Services, Bookings, Visits, Receipts, Cashbacks, Reviews

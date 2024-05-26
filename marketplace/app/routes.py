@@ -1,6 +1,9 @@
 import os
 import logging
 from flask import Blueprint, request, jsonify, render_template
+from flask import current_app
+
+from werkzeug.utils import secure_filename
 from sqlalchemy.exc import SQLAlchemyError
 
 from .models import db, User, Vendor, Service, Booking, Visit, Receipt, Cashback, Review
@@ -8,6 +11,7 @@ from .schemas import UserSchema, VendorSchema, ServiceSchema, BookingSchema, Vis
 from .crud import create_user, create_vendor
 
 bp = Blueprint('routes', __name__)
+# bp.config['UPLOAD_FOLDER'] = '/path/to/upload'
 
 # Настройка логирования
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -38,14 +42,13 @@ reviews_schema = ReviewSchema(many=True)
 
 
 
-# @bp.route('/resources')
-# def list_resources():
-#     # Путь к папке со статическими файлами
-#     static_folder = bp.static_folder
-#     # Получение списка всех файлов в этой папке
-#     resources = os.listdir(static_folder)
-#     return jsonify(resources)
-#
+@bp.route('/resources')
+def list_resources():
+    # Путь к папке со статическими файлами
+    static_folder = bp.static_folder
+    # Получение списка всех файлов в этой папке
+    resources = os.listdir(static_folder)
+    return jsonify(resources)
 
 @bp.route('/')
 def home():
@@ -61,7 +64,11 @@ def view_vendor():
 
 @bp.route('/view_item')
 def view_item():
-    return render_template('view_item.html')
+    return render_template('add_item.html')
+
+@bp.route('/view_my_chashback')
+def view_my_cashback():
+    return render_template('user_dashboard.html')
 
 
 @bp.route('/add_user', methods=['POST'])
@@ -103,6 +110,45 @@ def add_vendor():
         return jsonify({'error': 'An unexpected error occurred'}), 500
 
 
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'gif'}
+
+
+@bp.route('/add_service', methods=['POST'])
+def add_service():
+    vendor_id = request.form.get('vendor_id')
+    name = request.form.get('name')
+    description = request.form.get('description')
+    price = request.form.get('price')
+    file = request.files.get('fileUpload')
+    image_url = None  # Значение по умолчанию для URL изображения
+
+    # Проверяем, что файл существует, и он допустим для загрузки
+    if file and file.filename and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        upload_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+        file.save(upload_path)
+        image_url = upload_path  # Сохраняем путь к изображению
+
+    # Создаем новую услугу, даже если изображение не предоставлено
+    new_service = Service(
+        vendor_id=vendor_id,
+        name=name,
+        description=description,
+        price=None,
+        image_url=image_url  # Может быть None, если изображение не загружено
+    )
+    db.session.add(new_service)
+    db.session.commit()
+
+    response_message = {
+        'message': 'Service created successfully!',
+        'image_url': image_url or "No image provided"
+    }
+    return jsonify(response_message), 200
+
+
 @bp.route('/get_users', methods=['GET'])
 def get_users():
     try:
@@ -113,14 +159,51 @@ def get_users():
         return jsonify({'error': 'Internal server error'}), 500
 
 
+@bp.route('/register', methods=['POST'])
+def register_user():
+    data = request.json
+    existing_user = User.query.filter_by(tg_id=data['tg_id']).first()
+    if not existing_user:
+        new_user = User(
+                        tg_id=data['tg_id'],
+                        tg_username=data['tg_username'],
+                        tg_first_name=data['tg_first_name'],
+                        tg_last_name=data['tg_last_name'],
+                        user_type='User')
+        db.session.add(new_user)
+        db.session.commit()
+        return jsonify({'card_number': new_user.card_number}), 201
+    return jsonify({'card_number': existing_user.card_number}), 200
+
+
 @bp.route('/get_vendors', methods=['GET'])
 def get_vendors():
     try:
-        vendors = Vendor.query.all()
+        vendor_type = request.args.get('vendor_type')
+        if vendor_type:
+            vendors = Vendor.query.filter_by(vendor_type=vendor_type).all()
+        else:
+            vendors = Vendor.query.all()
+
         return vendors_schema.jsonify(vendors)
     except Exception as e:
         logging.error(f"Error retrieving vendors: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
+
+
+@bp.route('/get_services', methods=['GET'])
+def get_services():
+    services = db.session.query(Service.name,
+                                Service.description,
+                                Service.price,
+                                Vendor.name.label("vendor_name"),
+                                Service.image_url).join(Vendor).all()
+    return jsonify([{'name': service.name,
+                     'description': service.description,
+                     'price': float(service.price) if service.price is not None else 0.0,
+                     'vendor_name': service.vendor_name,
+                     'image_url': service.image_url} for service in services])
+
 
 
 # Similarly, add routes for Services, Bookings, Visits, Receipts, Cashbacks, Reviews

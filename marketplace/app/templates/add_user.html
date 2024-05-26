@@ -4,120 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create User</title>
-    <style>
-        body {
-            font-family: 'Arial', sans-serif;
-            background-color: #f4f4f9;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-        }
-
-        form {
-            background: white;
-            padding: 2em;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            border-radius: 8px;
-        }
-
-        h1 {
-            text-align: center;
-            color: #333;
-        }
-
-        label {
-            color: #555;
-            display: block;
-            margin-bottom: 5px;
-        }
-
-        input[type="text"],
-        input[type="email"]
-        {
-            width: 100%;
-            padding: 10px;
-            margin-bottom: 20px;
-            border-radius: 5px;
-            border: 1px solid #ddd;
-            box-sizing: border-box;
-        }
-
-        button {
-            width: 100%;
-            padding: 10px;
-            background-color: #0056b3;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-
-        button:hover {
-            background-color: #004494;
-        }
-
-        form div {
-            margin-bottom: 15px;
-        }
-
-        #message {
-            text-align: center;
-            color: #d8000c;
-            margin-top: 20px;
-        }
-
-        input[type="text"],
-        select {
-            width: 100%;
-            padding: 10px;
-            margin-bottom: 20px;
-            border-radius: 5px;
-            border: 1px solid #ddd;
-            box-sizing: border-box;
-        }
-
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            height: auto;
-            padding-top: 50px;
-        }
-
-        .container {
-            display: flex;
-            justify-content: space-around;
-            width: 100%;
-        }
-
-        form {
-            width: 30%;
-        }
-
-        table {
-            width: 60%;
-            margin-left: 20px;
-        }
-
-        th, td {
-            padding: 8px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }
-
-        th {
-            font-size: 16px; /* Larger font size for headers */
-        }
-
-        td {
-            font-size: 13px; /* Smaller font size for table data */
-        }
-    </style>
-
+    <link rel="stylesheet" href="../static/css/styles.css">
 </head>
 <body>
     <form id="userForm">
@@ -189,14 +76,31 @@
             }
         }
 
+        // function populateUsersTable(users) {
+        //     const tableBody = document.getElementById('userTable').getElementsByTagName('tbody')[0];
+        //     tableBody.innerHTML = '';
+        //     users.forEach(user => {
+        //         const row = tableBody.insertRow();
+        //         ['tg_username', 'card_number', 'tg_first_name', 'tg_last_name', 'user_type', 'email'].forEach((prop, index) => {
+        //             row.insertCell(index).textContent = user[prop];
+        //         });
+        //     });
+        // }
+
         function populateUsersTable(users) {
             const tableBody = document.getElementById('userTable').getElementsByTagName('tbody')[0];
-            tableBody.innerHTML = '';
+            tableBody.innerHTML = '';  // Очищаем текущее содержимое таблицы
+
             users.forEach(user => {
                 const row = tableBody.insertRow();
-                ['tg_username', 'card_number', 'name', 'user_type', 'email'].forEach((prop, index) => {
-                    row.insertCell(index).textContent = user[prop];
-                });
+
+                // Создаем ячейку для имени, которое будет комбинацией имени и фамилии
+                const fullName = user.tg_first_name + ' ' + user.tg_last_name;  // Склеиваем имя и фамилию
+                row.insertCell(0).textContent = user.tg_username;
+                row.insertCell(1).textContent = user.card_number;
+                row.insertCell(2).textContent = fullName;  // Вставляем полное имя в таблицу
+                row.insertCell(3).textContent = user.user_type;
+                row.insertCell(4).textContent = user.email;
             });
         }
 

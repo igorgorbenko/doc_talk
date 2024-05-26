@@ -9,10 +9,12 @@ from flask_cors import CORS
 db = SQLAlchemy()
 ma = Marshmallow()
 
+
 def create_app():
     app = Flask(__name__)
     CORS(app)
     app.config.from_object('app.config.Config')
+    app.config['UPLOAD_FOLDER'] = './tmp_images/'
 
     db.init_app(app)
     ma.init_app(app)

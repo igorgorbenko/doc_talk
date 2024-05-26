@@ -1,6 +1,6 @@
 from . import ma
 from marshmallow_enum import EnumField
-from .models import User, Vendor, Service, Booking, Visit, Receipt, Cashback, Review, UserType
+from .models import User, Vendor, Service, Booking, Visit, Receipt, Cashback, Review, UserType, VendorType
 
 
 class UserSchema(ma.SQLAlchemyAutoSchema):
@@ -14,6 +14,8 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
         dump_only = ("user_id",)  # Fields that should only be included in responses, not in requests
 
 class VendorSchema(ma.SQLAlchemyAutoSchema):
+    vendor_type = EnumField(VendorType, by_value=True, dump_only=True)  # Changed to dump_only
+
     class Meta:
         model = Vendor
         load_instance = True

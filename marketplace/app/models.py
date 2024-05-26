@@ -29,9 +29,12 @@ class User(db.Model):
     card_number = Column(Integer, Sequence('card_number_seq'), unique=True)
     user_type = Column(Enum(UserType))
     vendor_id = Column(Integer, ForeignKey('vendors.vendor_id'), nullable=True)
-    tg_username = Column(String(100), unique=True, index=True)
+    tg_username = Column(String(100))
+    tg_id = Column(Integer, unique=True, index=True)
+    tg_first_name = Column(String(100))
+    tg_last_name = Column(String(100))
     name = Column(String(100))
-    email = Column(String(100), unique=True)
+    email = Column(String(100))
     phone = Column(String(15))
     created_at = Column(TIMESTAMP, server_default=db.func.utctimestamp())
 
@@ -46,7 +49,8 @@ class Vendor(db.Model):
     __tablename__ = 'vendors'
     vendor_id = Column(Integer, primary_key=True)
     name = Column(String(100), unique=True, index=True)
-    type = EnumField(VendorType, by_value=True)
+    vendor_type = Column(Enum(VendorType), index=True)
+    description = Column(Text)
     address = Column(String(255))
     contact_info = Column(String(100))
     created_at = Column(TIMESTAMP, server_default=db.func.current_timestamp())
@@ -63,7 +67,7 @@ class Service(db.Model):
     vendor_id = Column(Integer, ForeignKey('vendors.vendor_id'))
     name = Column(String(100))
     description = Column(Text)
-    price = Column(DECIMAL(10, 2))
+    price = Column(DECIMAL(10, 2), nullable=True)
     image_url = Column(String(255))  # Добавляем поле для URL изображения
     created_at = Column(TIMESTAMP, server_default=db.func.current_timestamp())
 

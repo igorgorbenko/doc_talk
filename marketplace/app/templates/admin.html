@@ -14,23 +14,27 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100vh;
+            height: 90vh;
         }
         .menu {
-            display: flex; /* Элементы меню выстраиваются горизонтально */
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between; /* Распределяем контент с равными отступами */
             margin-top: 20px;
+            max-width: 500px; /* Ширина, рассчитанная как ширина трех кнопок + отступы */
         }
         a {
             text-decoration: none;
             color: white;
             background-color: #007bff;
             padding: 10px 20px;
-            margin: 5px;
+            margin: 5px; /* Небольшой отступ между кнопками */
             border-radius: 5px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            display: inline-block; /* Использование inline-block для выравнивания */
-            width: 150px; /* Установка одинаковой ширины для всех кнопок */
-            text-align: center; /* Центрирование текста в кнопках */
+            display: flex;
+            width: 110px; /* Фиксированная ширина каждой кнопки */
+            text-align: center;
+            justify-content: center; /* Центрирование текста внутри кнопки */
         }
         a:hover {
             background-color: #0056b3;
@@ -42,7 +46,12 @@
     <div class="menu">
         <a href="/view_user">Users</a>
         <a href="/view_vendor">Vendors</a>
-        <a href="/view_item">Items</a>
+        <a href="/view_item">Add Items</a>
+        <a href="/cashback">Cashback</a>
+        <a href="/bookings">Bookings</a>
+        <a href="/visits">Visits</a>
+        <a href="/receips">Receipts</a>
+        <a href="/reviews">Reviews</a>
     </div>
 </body>
 </html>
