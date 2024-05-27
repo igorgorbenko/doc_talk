@@ -164,16 +164,17 @@ def register_user():
     data = request.json
     existing_user = User.query.filter_by(tg_id=data['tg_id']).first()
     if not existing_user:
-        new_user = User(
-                        tg_id=data['tg_id'],
+        new_user = User(tg_id=data['tg_id'],
                         tg_username=data['tg_username'],
                         tg_first_name=data['tg_first_name'],
                         tg_last_name=data['tg_last_name'],
                         user_type='User')
         db.session.add(new_user)
         db.session.commit()
-        return jsonify({'card_number': new_user.card_number}), 201
-    return jsonify({'card_number': existing_user.card_number}), 200
+        return jsonify({'card_number': new_user.card_number,
+                        'user_id': new_user.user_id}), 201
+    return jsonify({'card_number': existing_user.card_number,
+                    'user_id': existing_user.user_id}), 200
 
 
 @bp.route('/get_vendors', methods=['GET'])
@@ -193,17 +194,32 @@ def get_vendors():
 
 @bp.route('/get_services', methods=['GET'])
 def get_services():
-    services = db.session.query(Service.name,
-                                Service.description,
-                                Service.price,
-                                Vendor.name.label("vendor_name"),
-                                Service.image_url).join(Vendor).all()
-    return jsonify([{'name': service.name,
-                     'description': service.description,
-                     'price': float(service.price) if service.price is not None else 0.0,
-                     'vendor_name': service.vendor_name,
-                     'image_url': service.image_url} for service in services])
+    try:
+        vendor_id = request.args.get('vendor_id')
+        query = db.session.query(Service.service_id,
+                                 Service.vendor_id,
+                                 Service.name,
+                                 Service.description,
+                                 Service.price,
+                                 Vendor.name.label("vendor_name"),
+                                 Service.image_url).join(Vendor)
 
+        if vendor_id:
+            query = query.filter(Service.vendor_id == vendor_id)
+
+        services = query.all()
+
+        return jsonify([{
+            'service_id': service.service_id,
+            'name': service.name,
+            'description': service.description,
+            'price': float(service.price) if service.price is not None else 0.0,
+            'vendor_name': service.vendor_name,
+            'image_url': service.image_url
+        } for service in services])
+    except Exception as e:
+        logging.error(f"Error retrieving services: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 # Similarly, add routes for Services, Bookings, Visits, Receipts, Cashbacks, Reviews

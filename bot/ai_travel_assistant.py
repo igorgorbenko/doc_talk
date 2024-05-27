@@ -38,9 +38,7 @@ def encode_image(image_path):
 
 async def get_balance(update: Update, context: CallbackContext) -> None:
     kb = [
-        # [InlineKeyboardButton("Посмотрите свой кэшбек", web_app=WebAppInfo(url="https://b35d-2001-8f8-1b2f-a514-f83f-7537-cecb-4f8c.ngrok-free.app/user_dashboard.html"))]
         [InlineKeyboardButton("Посмотрите свой кэшбек", web_app=WebAppInfo(url="https://gentle-piglet-legal.ngrok-free.app/view_my_chashback"))]
-
     ]
     reply_markup = InlineKeyboardMarkup(kb)
     await update.message.reply_text("Нажмите на кнопку ниже, чтобы открыть личный кабинет:", reply_markup=reply_markup)
@@ -69,7 +67,6 @@ async def start(update: Update, context: CallbackContext) -> None:
     cashback = 3250
     # card_number = 1001
     response = requests.post("http://127.0.0.1:8000/register", json=tg_user_params)
-    print('response.json()', response.json())
     if response.status_code == 201:
         card_number = response.json()['card_number']
         await update.message.reply_text(f'Welcome! Your discount card number is {card_number}.')
@@ -80,8 +77,6 @@ async def start(update: Update, context: CallbackContext) -> None:
     web_app_url = (f"https://gentle-piglet-legal.ngrok-free.app/view_my_chashback"
                    f"?tg_username={tg_user_params['tg_username']}&tg_first_name={tg_user_params['tg_first_name']}"
                    f"&tg_last_name={tg_user_params['tg_last_name']}&cashback={cashback}&card_number={card_number}")
-
-    print(web_app_url)
 
     kb = [
         [KeyboardButton("🎧 Помощь оператора")],
@@ -207,7 +202,6 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
             await update.message.reply_text("Извините, я не понял ваш запрос. Пожалуйста, выберите один из вариантов меню.")
 
 
-
 async def handle_query(update: Update, context: CallbackContext):
     query = update.callback_query
     await query.answer()
@@ -226,57 +220,54 @@ async def handle_query(update: Update, context: CallbackContext):
         else:
             logging.error(f"Failed to get vendors: {response.status_code}")
             await query.message.reply_text("Ошибка при получении списка вендоров. Попробуйте позже.")
-    elif text.startswith('book_'):
-        vendor_id = int(text.split('_')[1])
-        vendors = context.user_data.get('vendors', [])
-        vendor = next((v for v in vendors if v['vendor_id'] == vendor_id), None)
-        if vendor:
-            message, reply_markup = format_vendor_details(vendor)
+    elif text.startswith('book_service_'):
+        service_id = text.split('_')[2]
+        await query.message.reply_text(f"Вы выбрали бронирование столика у поставщика с ID {service_id}.")
+        # Логика для продолжения процесса бронирования
+    elif text.startswith('select_vendor_'):
+        vendor_id = int(text.split('_')[2])
+        logging.info(f"vendor {vendor_id}")
+
+        # Get services bt vendor
+        response = requests.get(f"http://127.0.0.1:8000/get_services?vendor_id={vendor_id}")
+        if response.status_code == 200:
+            services = response.json()
+            message, reply_markup = get_list_services(services)
             await query.message.reply_text(message, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
         else:
-            await query.message.reply_text("Поставщик не найден.")
-    elif text.startswith('book_table_'):
-        vendor_id = text.split('_')[2]
-        await query.message.reply_text(f"Вы выбрали бронирование столика у поставщика с ID {vendor_id}.")
-        # Логика для продолжения процесса бронирования
+            logging.error(f"Failed to get vendors: {response.status_code}")
+            await query.message.reply_text("Ошибка при получении списка вендоров. Попробуйте позже.")
+
     elif text == "back_to_vendors":
         # Логика для возврата к списку вендоров
         await get_vendors_type_list(update, context, True)
-        # await query.message.reply_text("Пожалуйста, выберите тип поставщика:", reply_markup=InlineKeyboardMarkup([
-        #     [InlineKeyboardButton("Hotel", callback_data="Hotel")],
-        #     [InlineKeyboardButton("Restaurant", callback_data="Restaurant")],
-        #     [InlineKeyboardButton("Yacht", callback_data="Yacht")],
-        #     [InlineKeyboardButton("TourOperator", callback_data="TourOperator")],
-        # ]))
     else:
         logging.error(f"Unknown callback data {text}")
         await query.message.reply_text("Неизвестный запрос.")
 
-def format_vendor_details(vendor):
-    message = f"*Название:* {vendor['name']}\n"
-    message += f"*Тип:* {vendor['vendor_type']}\n"
-    message += f"*Адрес:* {vendor['address']}\n"
-    message += f"*Описание:* {vendor.get('description', 'Описание отсутствует')}\n"
 
-    keyboard = [
-        [InlineKeyboardButton("Забронировать стол", callback_data=f"book_table_{vendor['vendor_id']}")],
-        [InlineKeyboardButton("Вернуться назад", callback_data="back_to_vendors")]
-    ]
+def get_list_services(services):
+    keyboard = [[InlineKeyboardButton("Вернуться назад", callback_data="back_to_vendors")]]
+
+    message = "*Список услуг выбранного поставщика:*\n\n"
+
+    for service in services:
+        keyboard.insert(0, [InlineKeyboardButton(service['name'],
+                                                 callback_data=f"book_service_{service['service_id']}")])
+
     reply_markup = InlineKeyboardMarkup(keyboard)
-
     return message, reply_markup
 
 
 def format_vendor_list_with_buttons(vendors):
     keyboard = []
     for vendor in vendors:
-        keyboard.append([InlineKeyboardButton(vendor['name'], callback_data=f"book_{vendor['vendor_id']}")])
+        keyboard.append([InlineKeyboardButton(vendor['name'], callback_data=f"select_vendor_{vendor['vendor_id']}")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     message = "*Список поставщиков услуг:*\n\n"
     for vendor in vendors:
         message += f"*Название:* {vendor['name']}\n"
-        message += f"*Тип:* {vendor['vendor_type']}\n"
         message += f"*Адрес:* {vendor['address']}\n"
         message += "\n"
     return message, reply_markup
