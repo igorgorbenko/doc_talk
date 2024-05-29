@@ -89,6 +89,7 @@ class Booking(db.Model):
     service = relationship("Service", back_populates="bookings")
     visits = relationship("Visit", back_populates="booking")
 
+
 class Visit(db.Model):
     __tablename__ = 'visits'
     visit_id = Column(Integer, primary_key=True)

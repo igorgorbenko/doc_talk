@@ -6,7 +6,8 @@ import base64
 import httpx
 
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, WebAppInfo, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackContext, filters, CallbackQueryHandler
+from telegram.ext import (ApplicationBuilder, CommandHandler, MessageHandler, CallbackContext, filters,
+                          CallbackQueryHandler, ConversationHandler)
 from telegram.constants import ChatAction, ParseMode
 import requests
 
@@ -16,16 +17,17 @@ from openai import OpenAI
 TOKEN = ""
 BOT_USERNAME = "ai_assist_travel_bot"
 
-ASSISTANT_ID = ""
+ASSISTANT_ID = "asst_84zHfX8FkiPGZaxX2BfAd2cm"
 OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
 ASSISTANT_GPT = OpenAIAssistant(OPENAI_API_KEY, ASSISTANT_ID)
 
 OpenAI.api_key = OPENAI_API_KEY
 client = OpenAI()
 
+DATE, TIME, CONFIRM = range(3)
 
 # Настройка логирования
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(funcName)s - %(message)s', level=logging.INFO)
 # Configure the httpx logger to only output warnings or higher level messages
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -81,7 +83,7 @@ async def start(update: Update, context: CallbackContext) -> None:
     kb = [
         [KeyboardButton("🎧 Помощь оператора")],
         [KeyboardButton("⁉️ О нашем сервисе"), KeyboardButton("📋 Список партнеров")],
-        [KeyboardButton("🍽️ Забронировать столик")],
+        [KeyboardButton("🍽️ Мои бронирования")],
         [KeyboardButton("💸 Мой кэшбек", web_app=WebAppInfo(url=web_app_url)), KeyboardButton("📷 Загрузить чек")]
     ]
     reply_markup = ReplyKeyboardMarkup(kb, resize_keyboard=True)
@@ -189,7 +191,7 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
         await asyncio.sleep(0.3)  # Задержка для имитации печати
         await update.message.reply_text("Оператор на связи, введите свой вопрос")
         context.user_data['awaiting_response'] = True  # Флаг для ожидания ответа пользователя
-    elif user_message in ["⁉️ О нашем сервисе", "📋 Список партнеров", "🍽️ Забронировать столик", "💸 Мой кэшбек"]:
+    elif user_message in ["⁉️ О нашем сервисе", "📋 Список партнеров", "🍽️ Мои бронирования", "💸 Мой кэшбек"]:
         context.user_data['awaiting_response'] = False  # Сбрасываем флаг ожидания ответа
         await handle_predefined_questions(update, context, user_message)
     elif user_message == "📷 Загрузить чек":
@@ -207,57 +209,118 @@ async def handle_query(update: Update, context: CallbackContext):
     await query.answer()
     text = query.data
 
+    logging.info(f"Received callback query: {text}")
+
     if text in ['Hotel', 'Restaurant', 'Yacht', 'TourOperator']:
         logging.info(f"user {update.effective_user.username} selected {text}")
 
-        # Получаем список вендоров по типу
         response = requests.get(f"http://127.0.0.1:8000/get_vendors?vendor_type={text}")
         if response.status_code == 200:
             vendors = response.json()
-            context.user_data['vendors'] = vendors  # Сохраняем список вендоров
+            context.user_data['vendors'] = vendors
             message, reply_markup = format_vendor_list_with_buttons(vendors)
             await query.message.reply_text(message, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
         else:
             logging.error(f"Failed to get vendors: {response.status_code}")
             await query.message.reply_text("Ошибка при получении списка вендоров. Попробуйте позже.")
-    elif text.startswith('book_service_'):
-        service_id = text.split('_')[2]
-        await query.message.reply_text(f"Вы выбрали бронирование столика у поставщика с ID {service_id}.")
-        # Логика для продолжения процесса бронирования
     elif text.startswith('select_vendor_'):
         vendor_id = int(text.split('_')[2])
         logging.info(f"vendor {vendor_id}")
 
-        # Get services bt vendor
         response = requests.get(f"http://127.0.0.1:8000/get_services?vendor_id={vendor_id}")
         if response.status_code == 200:
             services = response.json()
             message, reply_markup = get_list_services(services)
             await query.message.reply_text(message, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
         else:
-            logging.error(f"Failed to get vendors: {response.status_code}")
-            await query.message.reply_text("Ошибка при получении списка вендоров. Попробуйте позже.")
+            logging.error(f"Failed to get services: {response.status_code}")
+            await query.message.reply_text("Ошибка при получении списка услуг. Попробуйте позже.")
 
     elif text == "back_to_vendors":
-        # Логика для возврата к списку вендоров
         await get_vendors_type_list(update, context, True)
     else:
         logging.error(f"Unknown callback data {text}")
         await query.message.reply_text("Неизвестный запрос.")
 
+# Conversation handler states
+async def book_service(update: Update, context: CallbackContext):
+    query = update.callback_query
+    await query.answer()
+    text = query.data
+    context.user_data['service_id'] = int(text.split('_')[2])
+
+    logging.info(f"Entering book_service with callback query: {query.data}")
+    await query.message.reply_text("Пожалуйста, введите желаемую дату бронирования (в формате YYYY-MM-DD):")
+    return DATE
+
+async def received_date(update: Update, context: CallbackContext):
+    logging.info(f"Entering received_date with message: {update.message.text}")
+    context.user_data['booking_date'] = update.message.text
+    await update.message.reply_text("Пожалуйста, введите желаемое время бронирования (в формате HH:MM):")
+    return TIME
+
+async def received_time(update: Update, context: CallbackContext):
+    logging.info(f"Entering received_time with message: {update.message.text}")
+    context.user_data['booking_time'] = update.message.text
+    booking_date = context.user_data['booking_date']
+    booking_time = context.user_data['booking_time']
+
+    keyboard = [
+        [InlineKeyboardButton("Подтвердить", callback_data='confirm')],
+        [InlineKeyboardButton("Отменить", callback_data='cancel')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        f"Вы хотите забронировать на {booking_date} в {booking_time}. Подтвердите бронирование.",
+        reply_markup=reply_markup)
+    return CONFIRM
+
+async def confirm_booking(update: Update, context: CallbackContext):
+    logging.info("Entering confirm_booking")
+    query = update.callback_query
+    await query.answer()
+    booking_date = context.user_data['booking_date']
+    booking_time = context.user_data['booking_time']
+    tg_user_id = query.from_user.id
+
+    booking_params = {
+        'tg_id': tg_user_id,
+        'service_id': context.user_data['service_id'],
+        'booking_date_time': f"{booking_date} {booking_time}"
+    }
+
+    message = f"User {tg_user_id} забронировал столик на {booking_date} в {booking_time}."
+    response = requests.post("http://127.0.0.1:8000/add_booking", json=booking_params)
+    if response.status_code == 201:
+        booking_id = response.json()['booking_id']
+        await notify_vendor(message)
+        await query.edit_message_text(f"Ваше бронирование на {booking_date} в {booking_time} "
+                                      f"отправлено партнеру для подтверждения.")
+        return ConversationHandler.END
+    else:
+        logging.error(f"Error during the booking process! response.status_code: {response.status_code}")
+        await query.edit_message_text(f"Не удалось сохранить ваше бронирование! Пожалуйста, повторите операцию позднее")
+
+
+async def cancel_booking(update: Update, context: CallbackContext):
+    logging.info("Entering cancel_booking")
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("Бронирование отменено.")
+    await get_vendors_type_list(update, context, True)
+    return ConversationHandler.END
 
 def get_list_services(services):
     keyboard = [[InlineKeyboardButton("Вернуться назад", callback_data="back_to_vendors")]]
-
     message = "*Список услуг выбранного поставщика:*\n\n"
 
     for service in services:
-        keyboard.insert(0, [InlineKeyboardButton(service['name'],
-                                                 callback_data=f"book_service_{service['service_id']}")])
+        keyboard.insert(0,
+                        [InlineKeyboardButton(service['name'], callback_data=f"book_service_{service['service_id']}")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     return message, reply_markup
-
 
 def format_vendor_list_with_buttons(vendors):
     keyboard = []
@@ -268,15 +331,15 @@ def format_vendor_list_with_buttons(vendors):
     message = "*Список поставщиков услуг:*\n\n"
     for vendor in vendors:
         message += f"*Название:* {vendor['name']}\n"
-        message += f"*Адрес:* {vendor['address']}\n"
-        message += "\n"
+        message += f"*Адрес:* {vendor['address']}\n\n"
     return message, reply_markup
-
 
 async def get_vendors_type_list(update: Update, context: CallbackContext, from_return=False):
     kb = [
-        [InlineKeyboardButton("Рестораны", callback_data='Restaurant'), InlineKeyboardButton("Отели", callback_data='Hotel')],
-        [InlineKeyboardButton("Яхты", callback_data='Yacht'), InlineKeyboardButton("Туры и экскурсии", callback_data='TourOperator')]
+        [InlineKeyboardButton("Рестораны", callback_data='Restaurant'),
+         InlineKeyboardButton("Отели", callback_data='Hotel')],
+        [InlineKeyboardButton("Яхты", callback_data='Yacht'),
+         InlineKeyboardButton("Туры и экскурсии", callback_data='TourOperator')]
     ]
     reply_markup = InlineKeyboardMarkup(kb)
     if not from_return:
@@ -286,19 +349,19 @@ async def get_vendors_type_list(update: Update, context: CallbackContext, from_r
         await update.callback_query.message.reply_text("Пожалуйста, выберите интересующую вас категорию партнеров:",
                                                        reply_markup=reply_markup)
 
-
 async def handle_predefined_questions(update: Update, context: CallbackContext, question_type: str) -> None:
     if question_type == "⁉️ О нашем сервисе":
         await update.message.reply_text("Здесь будет текст о сервисе...")
     elif question_type == "📋 Список партнеров":
         await get_vendors_type_list(update, context)
-    elif question_type == "🍽️ Забронировать столик":
-        await update.message.reply_text("Здесь будет реализовано бронирование...")
+    elif question_type == "🍽️ Мои бронирования":
+        await get_my_booking_list(update, context)
     elif question_type == "💸 Мой кэшбек":
         await update.message.reply_text("Проверяю ваш баланс...")
-        # await get_balance(update, CallbackContext)
-        # TODO
 
+
+async await get_my_booking_list(update, context):
+    pass
 
 async def web_app_data(update: Update, context: CallbackContext):
     logging.info(update.message.web_app_data.data)
@@ -306,25 +369,45 @@ async def web_app_data(update: Update, context: CallbackContext):
 async def error_handler(update: Update, context: CallbackContext) -> None:
     logging.error(msg="Exception while handling an update:", exc_info=context.error)
 
+async def notify_vendor(message):
+    # Logic to notify vendor
+    pass
+
 
 if __name__ == '__main__':
-    # Создание приложения Telegram
+    # Create Telegram application
     application = ApplicationBuilder().token(TOKEN).build()
 
-    # Настройка командного обработчика /start для запуска основного меню
+    # Command handlers
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('shop', shop))
     application.add_handler(CommandHandler('balance', get_balance))
-    # Обработчик сообщений
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    # Message handlers
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex(r'^\d{4}-\d{2}-\d{2}$') & ~filters.Regex(r'^\d{2}:\d{2}$'),
+                                           handle_message))
     application.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    # Обработчик InloineKeyboard
-    application.add_handler(CallbackQueryHandler(handle_query))
 
-    # Обработчик ошибок
+    # Conversation handler
+    conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(book_service, pattern='book_service*')],
+        states={
+            DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(r'^\d{4}-\d{2}-\d{2}$'), received_date)],
+            TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(r'^\d{2}:\d{2}$'), received_time)],
+            CONFIRM: [CallbackQueryHandler(confirm_booking, pattern='^confirm$'),
+                      CallbackQueryHandler(cancel_booking, pattern='^cancel$')]
+        },
+        fallbacks=[CommandHandler('cancel', cancel_booking)]
+    )
+    application.add_handler(conv_handler)
+
+    # Callback query handler for other patterns
+    application.add_handler(CallbackQueryHandler(handle_query, pattern='^(?!book_service$).*'))
+
+    # Error handler
     application.add_error_handler(error_handler)
 
-    # Запуск бота
+    # Start bot
     print(f"Your bot is listening! Navigate to http://t.me/{BOT_USERNAME} to interact with it!")
     application.run_polling()

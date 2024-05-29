@@ -1,5 +1,7 @@
 import os
 import logging
+from datetime import datetime as dt
+
 from flask import Blueprint, request, jsonify, render_template
 from flask import current_app
 
@@ -147,6 +149,45 @@ def add_service():
         'image_url': image_url or "No image provided"
     }
     return jsonify(response_message), 200
+
+
+@bp.route('/add_booking', methods=['POST'])
+def add_booking():
+    data = request.json
+    tg_id = data.get('tg_id')
+    service_id = data.get('service_id')
+    booking_date_str = data.get('booking_date_time')
+
+    if not tg_id or not service_id or not booking_date_str:
+        return jsonify({"error": "Missing required fields"}), 400
+    try:
+        booking_date = dt.strptime(booking_date_str, "%Y-%m-%d %H:%M")
+
+        # Поиск пользователя по tg_id
+        user = User.query.filter_by(tg_id=tg_id).first()
+        if not user:
+            return jsonify({"error": f"No user found with tg_id: {tg_id}"}), 404
+
+        # Создание новой записи бронирования
+        new_booking = Booking(
+            user_id=user.user_id,
+            service_id=service_id,
+            booking_date=booking_date,
+            status='Pending'
+        )
+
+        # Добавление записи в сессию и сохранение изменений
+        db.session.add(new_booking)
+        db.session.commit()
+        return jsonify({"message": "Booking successfully added", "booking_id": new_booking.booking_id}), 201
+
+    except Exception as e:
+        # В случае ошибки откат изменений и вывод сообщения об ошибке
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+    # finally:
+    #     # Закрытие сессии
+    #     db.session.close()
 
 
 @bp.route('/get_users', methods=['GET'])
