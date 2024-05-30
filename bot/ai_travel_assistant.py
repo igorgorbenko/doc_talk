@@ -16,6 +16,7 @@ from openai import OpenAI
 
 TOKEN = ""
 BOT_USERNAME = "ai_assist_travel_bot"
+BOT_USERNAME = "ai_assist_travel_bot"
 
 ASSISTANT_ID = "asst_84zHfX8FkiPGZaxX2BfAd2cm"
 OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
@@ -63,6 +64,8 @@ async def start(update: Update, context: CallbackContext) -> None:
         'tg_first_name': user.first_name,
         'tg_last_name': user.last_name
     }
+    user_type = None
+    card_number = ''
 
     # Получение кешбека из базы данных
     # cashback = get_user_cashback(tg_username)
@@ -71,28 +74,45 @@ async def start(update: Update, context: CallbackContext) -> None:
     response = requests.post("http://127.0.0.1:8000/register", json=tg_user_params)
     if response.status_code == 201:
         card_number = response.json()['card_number']
+        user_type = response.json()['user_type']
         await update.message.reply_text(f'Welcome! Your discount card number is {card_number}.')
     elif response.status_code == 200:
         card_number = response.json()['card_number']
+        user_type = response.json()['user_type']
         await update.message.reply_text(f'Welcome back! Your card number is: {card_number}')
 
-    web_app_url = (f"https://gentle-piglet-legal.ngrok-free.app/view_my_chashback"
-                   f"?tg_username={tg_user_params['tg_username']}&tg_first_name={tg_user_params['tg_first_name']}"
-                   f"&tg_last_name={tg_user_params['tg_last_name']}&cashback={cashback}&card_number={card_number}")
+    logging.info(f'user_type {user_type}')
+    if user_type == 'Vendor':
+        kb = [
+            [KeyboardButton("🍽️ Бронирования для подтверждения")],
+            [KeyboardButton("💸 Начислить кэшбек")]
+            # [KeyboardButton("💸 Мой кэшбек", web_app=WebAppInfo(url=web_app_url)), KeyboardButton("📷 Загрузить чек")]
+        ]
+        reply_markup = ReplyKeyboardMarkup(kb, resize_keyboard=True)
 
-    kb = [
-        [KeyboardButton("🎧 Помощь оператора")],
-        [KeyboardButton("⁉️ О нашем сервисе"), KeyboardButton("📋 Список партнеров")],
-        [KeyboardButton("🍽️ Мои бронирования")],
-        [KeyboardButton("💸 Мой кэшбек", web_app=WebAppInfo(url=web_app_url)), KeyboardButton("📷 Загрузить чек")]
-    ]
-    reply_markup = ReplyKeyboardMarkup(kb, resize_keyboard=True)
+        # # Приветствие при стандартном вызове команды /start
+        await update.message.reply_text('Привет! Я консьерж-бот для организации досуга')
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        await update.message.reply_text("Пожалуйста, выберите один из вариантов на клавиатуре ниже:",
+                                        reply_markup=reply_markup)
+    else:
+        web_app_url = (f"https://gentle-piglet-legal.ngrok-free.app/view_my_chashback"
+                       f"?tg_username={tg_user_params['tg_username']}&tg_first_name={tg_user_params['tg_first_name']}"
+                       f"&tg_last_name={tg_user_params['tg_last_name']}&cashback={cashback}&card_number={card_number}")
 
-    # # Приветствие при стандартном вызове команды /start
-    await update.message.reply_text('Привет! Я консьерж-бот для организации досуга')
-    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-    await asyncio.sleep(0.5)  # Задержка для имитации печати
-    await update.message.reply_text("Пожалуйста, выберите один из вариантов на клавиатуре ниже:", reply_markup=reply_markup)
+        kb = [
+            [KeyboardButton("🎧 Помощь оператора")],
+            [KeyboardButton("⁉️ О нашем сервисе"), KeyboardButton("📋 Список партнеров")],
+            [KeyboardButton("🍽️ Мои бронирования")],
+            [KeyboardButton("💸 Мой кэшбек", web_app=WebAppInfo(url=web_app_url)), KeyboardButton("📷 Загрузить чек")]
+        ]
+        reply_markup = ReplyKeyboardMarkup(kb, resize_keyboard=True)
+
+        # # Приветствие при стандартном вызове команды /start
+        await update.message.reply_text('Привет! Я консьерж-бот для организации досуга')
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        await asyncio.sleep(0.5)  # Задержка для имитации печати
+        await update.message.reply_text("Пожалуйста, выберите один из вариантов на клавиатуре ниже:", reply_markup=reply_markup)
 
 
 def clean_response(text):
@@ -294,7 +314,7 @@ async def confirm_booking(update: Update, context: CallbackContext):
     response = requests.post("http://127.0.0.1:8000/add_booking", json=booking_params)
     if response.status_code == 201:
         booking_id = response.json()['booking_id']
-        await notify_vendor(message)
+        await notify_vendor(context)
         await query.edit_message_text(f"Ваше бронирование на {booking_date} в {booking_time} "
                                       f"отправлено партнеру для подтверждения.")
         return ConversationHandler.END
@@ -360,7 +380,7 @@ async def handle_predefined_questions(update: Update, context: CallbackContext, 
         await update.message.reply_text("Проверяю ваш баланс...")
 
 
-async await get_my_booking_list(update, context):
+async def get_my_booking_list(update, context):
     pass
 
 async def web_app_data(update: Update, context: CallbackContext):
@@ -369,12 +389,36 @@ async def web_app_data(update: Update, context: CallbackContext):
 async def error_handler(update: Update, context: CallbackContext) -> None:
     logging.error(msg="Exception while handling an update:", exc_info=context.error)
 
-async def notify_vendor(message):
-    # Logic to notify vendor
-    pass
+
+async def notify_vendor(context):
+    booking_info = context.user_data
+    message_text = (f"New booking request:\n"
+                    f"Date: {booking_info['booking_date']}\n"
+                    f"Time: {booking_info['booking_time']}")
+    await context.bot.send_message(chat_id=338009078, text=message_text)
+
+    # Start a task to check if the booking is confirmed after a timeout
+    asyncio.create_task(reminder_task(context, booking_info))
+
+RETRY_INTERVAL = 15
+
+async def reminder_task(context, booking_info):
+    await asyncio.sleep(RETRY_INTERVAL)
+    # Check if booking is still not confirmed (This is a placeholder, implement your own check)
+    if not booking_info.get('confirmed', False):
+        message_text = (
+            f"Reminder: The booking request for date {booking_info['booking_date']} "
+            f"and time {booking_info['booking_time']} is still not confirmed.")
+        await context.bot.send_message(chat_id=338009078, text=message_text)
 
 
 if __name__ == '__main__':
+    logging.basicConfig(
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=logging.INFO
+    )
+    logger = logging.getLogger(__name__)
+
     # Create Telegram application
     application = ApplicationBuilder().token(TOKEN).build()
 
@@ -391,7 +435,7 @@ if __name__ == '__main__':
 
     # Conversation handler
     conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(book_service, pattern='book_service*')],
+        entry_points=[CallbackQueryHandler(book_service, pattern='^book_service_')],
         states={
             DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(r'^\d{4}-\d{2}-\d{2}$'), received_date)],
             TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex(r'^\d{2}:\d{2}$'), received_time)],
@@ -403,11 +447,11 @@ if __name__ == '__main__':
     application.add_handler(conv_handler)
 
     # Callback query handler for other patterns
-    application.add_handler(CallbackQueryHandler(handle_query, pattern='^(?!book_service$).*'))
+    application.add_handler(CallbackQueryHandler(handle_query, pattern='^(?!book_service_).*'))
 
     # Error handler
     application.add_error_handler(error_handler)
 
     # Start bot
-    print(f"Your bot is listening! Navigate to http://t.me/{BOT_USERNAME} to interact with it!")
+    logging.info(f"Your bot is listening! Navigate to http://t.me/{BOT_USERNAME} to interact with it!")
     application.run_polling()

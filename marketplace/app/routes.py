@@ -212,11 +212,8 @@ def register_user():
                         user_type='User')
         db.session.add(new_user)
         db.session.commit()
-        return jsonify({'card_number': new_user.card_number,
-                        'user_id': new_user.user_id}), 201
-    return jsonify({'card_number': existing_user.card_number,
-                    'user_id': existing_user.user_id}), 200
-
+        return user_schema.jsonify(new_user), 201
+    return user_schema.jsonify(existing_user), 200
 
 @bp.route('/get_vendors', methods=['GET'])
 def get_vendors():
