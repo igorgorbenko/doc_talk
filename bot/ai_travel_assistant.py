@@ -14,7 +14,7 @@ import requests
 from openai_stuff.openai_stuff import OpenAIAssistant
 from openai import OpenAI
 
-TOKEN = ""
+TOKEN = "7049016728:AAEOpspJbUkVL5w5KSZAfzinFGxFy5YwLP8"
 BOT_USERNAME = "ai_assist_travel_bot"
 BOT_USERNAME = "ai_assist_travel_bot"
 
@@ -81,38 +81,37 @@ async def start(update: Update, context: CallbackContext) -> None:
         user_type = response.json()['user_type']
         await update.message.reply_text(f'Welcome back! Your card number is: {card_number}')
 
-    logging.info(f'user_type {user_type}')
-    if user_type == 'Vendor':
-        kb = [
-            [KeyboardButton("🍽️ Бронирования для подтверждения")],
-            [KeyboardButton("💸 Начислить кэшбек")]
-            # [KeyboardButton("💸 Мой кэшбек", web_app=WebAppInfo(url=web_app_url)), KeyboardButton("📷 Загрузить чек")]
-        ]
-        reply_markup = ReplyKeyboardMarkup(kb, resize_keyboard=True)
+    # if user_type == 'Vendor':
+    #     kb = [
+    #         [KeyboardButton("🍽️ Бронирования для подтверждения")],
+    #         [KeyboardButton("💸 Начислить кэшбек")]
+    #         # [KeyboardButton("💸 Мой кэшбек", web_app=WebAppInfo(url=web_app_url)), KeyboardButton("📷 Загрузить чек")]
+    #     ]
+    #     reply_markup = ReplyKeyboardMarkup(kb, resize_keyboard=True)
+    #
+    #     # # Приветствие при стандартном вызове команды /start
+    #     await update.message.reply_text('Привет! Я консьерж-бот для организации досуга')
+    #     await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+    #     await update.message.reply_text("Пожалуйста, выберите один из вариантов на клавиатуре ниже:",
+    #                                     reply_markup=reply_markup)
+    # else:
+    web_app_url = (f"https://gentle-piglet-legal.ngrok-free.app/view_my_chashback"
+                   f"?tg_username={tg_user_params['tg_username']}&tg_first_name={tg_user_params['tg_first_name']}"
+                   f"&tg_last_name={tg_user_params['tg_last_name']}&cashback={cashback}&card_number={card_number}")
 
-        # # Приветствие при стандартном вызове команды /start
-        await update.message.reply_text('Привет! Я консьерж-бот для организации досуга')
-        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-        await update.message.reply_text("Пожалуйста, выберите один из вариантов на клавиатуре ниже:",
-                                        reply_markup=reply_markup)
-    else:
-        web_app_url = (f"https://gentle-piglet-legal.ngrok-free.app/view_my_chashback"
-                       f"?tg_username={tg_user_params['tg_username']}&tg_first_name={tg_user_params['tg_first_name']}"
-                       f"&tg_last_name={tg_user_params['tg_last_name']}&cashback={cashback}&card_number={card_number}")
+    kb = [
+        [KeyboardButton("🎧 Помощь оператора")],
+        [KeyboardButton("⁉️ О нашем сервисе"), KeyboardButton("📋 Список партнеров")],
+        [KeyboardButton("🍽️ Мои бронирования")],
+        [KeyboardButton("💸 Мой кэшбек", web_app=WebAppInfo(url=web_app_url)), KeyboardButton("📷 Загрузить чек")]
+    ]
+    reply_markup = ReplyKeyboardMarkup(kb, resize_keyboard=True)
 
-        kb = [
-            [KeyboardButton("🎧 Помощь оператора")],
-            [KeyboardButton("⁉️ О нашем сервисе"), KeyboardButton("📋 Список партнеров")],
-            [KeyboardButton("🍽️ Мои бронирования")],
-            [KeyboardButton("💸 Мой кэшбек", web_app=WebAppInfo(url=web_app_url)), KeyboardButton("📷 Загрузить чек")]
-        ]
-        reply_markup = ReplyKeyboardMarkup(kb, resize_keyboard=True)
-
-        # # Приветствие при стандартном вызове команды /start
-        await update.message.reply_text('Привет! Я консьерж-бот для организации досуга')
-        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-        await asyncio.sleep(0.5)  # Задержка для имитации печати
-        await update.message.reply_text("Пожалуйста, выберите один из вариантов на клавиатуре ниже:", reply_markup=reply_markup)
+    # # Приветствие при стандартном вызове команды /start
+    await update.message.reply_text('Привет! Я консьерж-бот для организации досуга')
+    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+    await asyncio.sleep(0.5)  # Задержка для имитации печати
+    await update.message.reply_text("Пожалуйста, выберите один из вариантов на клавиатуре ниже:", reply_markup=reply_markup)
 
 
 def clean_response(text):
@@ -310,10 +309,10 @@ async def confirm_booking(update: Update, context: CallbackContext):
         'booking_date_time': f"{booking_date} {booking_time}"
     }
 
-    message = f"User {tg_user_id} забронировал столик на {booking_date} в {booking_time}."
     response = requests.post("http://127.0.0.1:8000/add_booking", json=booking_params)
     if response.status_code == 201:
         booking_id = response.json()['booking_id']
+        context.user_data['booking_id'] = booking_id
         await notify_vendor(context)
         await query.edit_message_text(f"Ваше бронирование на {booking_date} в {booking_time} "
                                       f"отправлено партнеру для подтверждения.")
@@ -392,25 +391,40 @@ async def error_handler(update: Update, context: CallbackContext) -> None:
 
 async def notify_vendor(context):
     booking_info = context.user_data
-    message_text = (f"New booking request:\n"
-                    f"Date: {booking_info['booking_date']}\n"
-                    f"Time: {booking_info['booking_time']}")
-    await context.bot.send_message(chat_id=338009078, text=message_text)
+    booking_id = booking_info.get('booking_id')
 
-    # Start a task to check if the booking is confirmed after a timeout
-    asyncio.create_task(reminder_task(context, booking_info))
+    if not booking_id:
+        logging.error("Missing booking_id in context user_data")
+        return
 
-RETRY_INTERVAL = 15
+    url = "http://127.0.0.1:8000/notify_vendor"
+    payload = {
+        "booking_id": booking_id
+    }
 
-async def reminder_task(context, booking_info):
-    await asyncio.sleep(RETRY_INTERVAL)
-    # Check if booking is still not confirmed (This is a placeholder, implement your own check)
-    if not booking_info.get('confirmed', False):
-        message_text = (
-            f"Reminder: The booking request for date {booking_info['booking_date']} "
-            f"and time {booking_info['booking_time']} is still not confirmed.")
-        await context.bot.send_message(chat_id=338009078, text=message_text)
+    try:
+        response = requests.post(url, json=payload)
+        if response.status_code == 200:
+            logging.info("Notification request sent successfully")
+        else:
+            logging.error(f"Failed to send notification request: {response.text}")
+    except requests.exceptions.RequestException as e:
+        logging.error(f"RequestException while sending notification request: {e}")
 
+#     # Start a task to check if the booking is confirmed after a timeout
+#     asyncio.create_task(reminder_task(context, booking_info))
+#
+# RETRY_INTERVAL = 15
+#
+# async def reminder_task(context, booking_info):
+#     await asyncio.sleep(RETRY_INTERVAL)
+#     # Check if booking is still not confirmed (This is a placeholder, implement your own check)
+#     if not booking_info.get('confirmed', False):
+#         message_text = (
+#             f"Reminder: The booking request for date {booking_info['booking_date']} "
+#             f"and time {booking_info['booking_time']} is still not confirmed.")
+#         await context.bot.send_message(chat_id=338009078, text=message_text)
+#
 
 if __name__ == '__main__':
     logging.basicConfig(

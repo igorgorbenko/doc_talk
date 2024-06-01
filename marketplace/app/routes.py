@@ -1,6 +1,8 @@
 import os
 import logging
+import json
 from datetime import datetime as dt
+import requests
 
 from flask import Blueprint, request, jsonify, render_template
 from flask import current_app
@@ -11,6 +13,15 @@ from sqlalchemy.exc import SQLAlchemyError
 from .models import db, User, Vendor, Service, Booking, Visit, Receipt, Cashback, Review
 from .schemas import UserSchema, VendorSchema, ServiceSchema, BookingSchema, VisitSchema, ReceiptSchema, CashbackSchema, ReviewSchema
 from .crud import create_user, create_vendor
+
+# from telegram import Bot
+
+# Telegram Bot Token
+TELEGRAM_BOT_TOKEN = ""
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+
+# bot = Bot(token=TELEGRAM_BOT_TOKEN)
+
 
 bp = Blueprint('routes', __name__)
 # bp.config['UPLOAD_FOLDER'] = '/path/to/upload'
@@ -215,6 +226,14 @@ def register_user():
         return user_schema.jsonify(new_user), 201
     return user_schema.jsonify(existing_user), 200
 
+
+@bp.route('/check_vendor_by_user', methods=['POST'])
+def check_vendor_by_user():
+    data = request.json
+    existing_user = User.query.filter_by(tg_id=data['tg_id']).first()
+    return user_schema.jsonify(existing_user), 200
+
+
 @bp.route('/get_vendors', methods=['GET'])
 def get_vendors():
     try:
@@ -260,7 +279,63 @@ def get_services():
         return jsonify({'error': 'Internal server error'}), 500
 
 
+@bp.route('/notify_vendor', methods=['POST'])
+def notify_vendor():
+    data = request.json
+    booking_id = data.get('booking_id')
+
+    if not booking_id:
+        return jsonify({"error": "Missing booking_id"}), 400
+
+    booking = Booking.query.filter_by(booking_id=booking_id).first()
+
+    if not booking:
+        return jsonify({"error": "Booking not found"}), 404
+
+    service = Service.query.filter_by(service_id=booking.service_id).first()
+
+    if not service:
+        return jsonify({"error": "Service not found"}), 404
+
+    vendor_users = User.query.filter_by(vendor_id=service.vendor_id, user_type='Vendor').all()
+
+    if not vendor_users:
+        return jsonify({"error": "No vendor users found"}), 404
+
+    message_text = (f"New booking request:\n"
+                    f"Date: {booking.booking_date}\n")
+
+    inline_keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "Подтвердить бронирование", "callback_data": f"confirm_{booking_id}"},
+                {"text": "Отказать", "callback_data": f"reject_{booking_id}"}
+            ]
+        ]
+    }
+
+    for user in vendor_users:
+        chat_id = user.tg_id
+        try:
+            payload = {
+                'chat_id': chat_id,
+                'text': message_text,
+                'reply_markup': json.dumps(inline_keyboard)
+            }
+            response = requests.post(TELEGRAM_API_URL, json=payload)
+            response_data = response.json()
+
+            if response.status_code == 200 and response_data.get('ok'):
+                logging.info(f"Notification sent to user {user.tg_username} (chat_id: {chat_id})")
+            else:
+                logging.error(
+                    f"Failed to send message to user {user.tg_username} (chat_id: {chat_id}): {response_data}")
+
+        except Exception as e:
+            logging.error(f"Failed to send message to user {user.tg_username} (chat_id: {chat_id}): {e}")
+    return jsonify({"status": "Notifications sent"}), 200
 # Similarly, add routes for Services, Bookings, Visits, Receipts, Cashbacks, Reviews
+
 
 def register_routes(app):
     app.register_blueprint(bp)
