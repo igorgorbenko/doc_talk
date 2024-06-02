@@ -14,17 +14,17 @@ from .models import db, User, Vendor, Service, Booking, Visit, Receipt, Cashback
 from .schemas import UserSchema, VendorSchema, ServiceSchema, BookingSchema, VisitSchema, ReceiptSchema, CashbackSchema, ReviewSchema
 from .crud import create_user, create_vendor
 
-# from telegram import Bot
 
 # Telegram Bot Token
-TELEGRAM_BOT_TOKEN = ""
-TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+TELEGRAM_VENDOR_BOT_TOKEN = ""
+TELEGRAM_VENDOR_API_URL = f"https://api.telegram.org/bot{TELEGRAM_VENDOR_BOT_TOKEN}/sendMessage"
 
-# bot = Bot(token=TELEGRAM_BOT_TOKEN)
+TELEGRAM_CUSTOMER_BOT_TOKEN = ""
+TELEGRAM_CUSTOMER_API_URL = f"https://api.telegram.org/bot{TELEGRAM_CUSTOMER_BOT_TOKEN}/sendMessage"
+
 
 
 bp = Blueprint('routes', __name__)
-# bp.config['UPLOAD_FOLDER'] = '/path/to/upload'
 
 # Настройка логирования
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -82,7 +82,6 @@ def view_item():
 @bp.route('/view_my_chashback')
 def view_my_cashback():
     return render_template('user_dashboard.html')
-
 
 @bp.route('/add_user', methods=['POST'])
 def add_user():
@@ -279,6 +278,31 @@ def get_services():
         return jsonify({'error': 'Internal server error'}), 500
 
 
+@bp.route('/update_booking_status', methods=['POST'])
+def update_booking_status():
+    data = request.json
+    booking_id = data.get('booking_id')
+    status = data.get('status')
+
+    if not booking_id or not status:
+        return jsonify({"error": "Missing mandatory fields"}), 400
+
+    try:
+        booking = Booking.query.filter_by(booking_id=booking_id).first()
+
+        if not booking:
+            return jsonify({"error": "Booking not found"}), 404
+
+        booking.status = status
+        db.session.commit()
+
+        return jsonify({"message": "Booking status updated successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        logging.error(f"Error updating booking status: {e}")
+        return jsonify({"error": "An error occurred while updating booking status"}), 500
+
+
 @bp.route('/notify_vendor', methods=['POST'])
 def notify_vendor():
     data = request.json
@@ -322,7 +346,7 @@ def notify_vendor():
                 'text': message_text,
                 'reply_markup': json.dumps(inline_keyboard)
             }
-            response = requests.post(TELEGRAM_API_URL, json=payload)
+            response = requests.post(TELEGRAM_VENDOR_API_URL, json=payload)
             response_data = response.json()
 
             if response.status_code == 200 and response_data.get('ok'):
@@ -335,6 +359,99 @@ def notify_vendor():
             logging.error(f"Failed to send message to user {user.tg_username} (chat_id: {chat_id}): {e}")
     return jsonify({"status": "Notifications sent"}), 200
 # Similarly, add routes for Services, Bookings, Visits, Receipts, Cashbacks, Reviews
+
+
+@bp.route('/notify_customer', methods=['POST'])
+def notify_customer():
+    data = request.json
+    booking_id = data.get('booking_id')
+
+    if not booking_id:
+        return jsonify({"error": "Missing booking_id"}), 400
+
+    query_result = (db.session.query(Booking.booking_date,
+                                     Booking.status,
+                                     Service.name.label("service_name"),
+                                     Vendor.name.label("vendor_name"),
+                                     User.tg_id,
+                                     User.tg_username)
+                    .join(Service, Booking.service_id == Service.service_id)
+                    .join(Vendor, Service.vendor_id == Vendor.vendor_id)
+                    .join(User, Booking.user_id == User.user_id)
+                    .filter(Booking.booking_id == booking_id)
+                    .first())
+
+    if not query_result:
+        return jsonify({"error": "The query returned the empty"}), 400
+
+    if query_result.status == 'Confirmed':
+        message_text = "Ваше бронирование подтверждено!\n"
+    else:
+        message_text = "Ваше бронирование НЕ ПОДТВЕРЖДЕНО!\n"
+
+    message_text += (f"Детали бронирования: \n " 
+                    f"{query_result.service_name} в {query_result.vendor_name}"
+                    f"Дата: {query_result.booking_date}")
+
+    chat_id = query_result.tg_id
+    tg_username = query_result.tg_username
+
+    try:
+        payload = {
+            'chat_id': chat_id,
+            'text': message_text
+        }
+        response = requests.post(TELEGRAM_CUSTOMER_API_URL, json=payload)
+        response_data = response.json()
+
+        if response.status_code == 200 and response_data.get('ok'):
+            logging.info(f"Notification sent to user {tg_username} (chat_id: {chat_id})")
+        else:
+            logging.error(
+                f"Failed to send message to user {tg_username} (chat_id: {chat_id}): {response_data}")
+
+    except Exception as e:
+        logging.error(f"Failed to send message to user {tg_username} (chat_id: {chat_id}): {e}")
+    return jsonify({"status": "Notifications sent"}), 200
+
+
+@bp.route('/get_bookings_by_user', methods=['POST'])
+def get_bookings_by_user():
+    data = request.json
+    tg_id = data.get('tg_id')
+
+    if not tg_id:
+        return jsonify({"error": "Missing tg_id"}), 400
+
+    try:
+        current_time = dt.now()
+
+        query_result = (db.session.query(Booking.booking_date,
+                                         Booking.status,
+                                         Service.name.label("service_name"),
+                                         Vendor.name.label("vendor_name"))
+                        .join(Service, Booking.service_id == Service.service_id)
+                        .join(Vendor, Service.vendor_id == Vendor.vendor_id)
+                        .join(User, Booking.user_id == User.user_id)
+                        .filter(User.tg_id == tg_id)
+                        .filter(Booking.booking_date > current_time)
+                        .all())
+
+        if not query_result:
+            return jsonify({"error": "No upcoming bookings found"}), 404
+
+        bookings = [{"booking_date": booking.booking_date,
+                     "status": booking.status,
+                     "service_name": booking.service_name,
+                     "vendor_name": booking.vendor_name,
+                     "tg_id": booking.tg_id,
+                     "tg_username": booking.tg_username} for booking in query_result]
+
+        return jsonify({"upcoming_bookings": bookings}), 200
+
+    except Exception as e:
+        logging.error(f"Error during upcoming_bookings: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 def register_routes(app):

@@ -1,6 +1,4 @@
-import asyncio
 import logging
-from datetime import datetime
 
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackContext, filters, \
@@ -91,7 +89,7 @@ async def confirm(update: Update, context: CallbackContext) -> int:
 
     if query_data == 'save':
         # Сохранение визита в базу данных
-        # TODO
+        # TODO: Реализуйте сохранение данных в базу данных
         await query.edit_message_text("Запись успешно сохранена!")
     elif query_data == 'cancel':
         await query.edit_message_text("Действие отменено.")
@@ -108,11 +106,43 @@ async def error_handler(update: Update, context: CallbackContext) -> None:
     logging.error(msg="Exception while handling an update:", exc_info=context.error)
 
 
+# Обработка нажатий на Inline кнопки для подтверждения или отклонения бронирования
+async def handle_callback_query(update: Update, context: CallbackContext) -> None:
+    query = update.callback_query
+    query_data = query.data
+
+    if query_data.startswith("confirm_") or query_data.startswith("reject_"):
+        status = 'Confirmed'
+        if query_data.startswith("reject_"):
+            status = 'Rejected'
+
+        booking_id = query_data.split("_")[1]
+        # TODO: Добавьте логику для подтверждения бронирования в базе данных
+        response_booking_status = requests.post("http://127.0.0.1:8000/update_booking_status",
+                                                json={"booking_id": booking_id,
+                                                      "status": status})
+        if response_booking_status.status_code == 200:
+            response_notification = requests.post("http://127.0.0.1:8000/notify_customer",
+                                                  json={"booking_id": booking_id})
+            if response_notification.status_code == 200:
+                await query.edit_message_text(f"Бронирование ID = {booking_id} обработано")
+            else:
+                logging.error(f"There is an error during the notify the customer Booking ID = {booking_id}, "
+                              f"error: {response_notification.error}")
+                await query.edit_message_text(f"При обработке бронирования ID = {booking_id} возникли проблемы")
+        else:
+            await query.edit_message_text(f"При обработке бронирования ID = {booking_id} возникли проблемы")
+            logging.error(f"There is an error during the update Booking ID = {booking_id}, "
+                          f"error: {response_booking_status.error}")
+
+    # Логика для других обработчиков callback_data может быть добавлена здесь
+
+
 if __name__ == '__main__':
-    # Create Telegram application
+    # Создание Telegram приложения
     application = ApplicationBuilder().token(TOKEN).build()
 
-    # Command handlers
+    # Обработчики команд
     application.add_handler(CommandHandler('start', start))
 
     # Conversation handler для начисления кэшбека
@@ -127,9 +157,12 @@ if __name__ == '__main__':
     )
     application.add_handler(conv_handler)
 
-    # Error handler
+    # Обработчик нажатий на Inline кнопки
+    application.add_handler(CallbackQueryHandler(handle_callback_query))
+
+    # Обработчик ошибок
     application.add_error_handler(error_handler)
 
-    # Start bot
+    # Запуск бота
     logging.info(f"Your bot is listening! Navigate to http://t.me/{BOT_USERNAME} to interact with it!")
     application.run_polling()

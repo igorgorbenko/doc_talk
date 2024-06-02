@@ -14,11 +14,10 @@ import requests
 from openai_stuff.openai_stuff import OpenAIAssistant
 from openai import OpenAI
 
-TOKEN = "7049016728:AAEOpspJbUkVL5w5KSZAfzinFGxFy5YwLP8"
-BOT_USERNAME = "ai_assist_travel_bot"
+TOKEN = ""
 BOT_USERNAME = "ai_assist_travel_bot"
 
-ASSISTANT_ID = "asst_84zHfX8FkiPGZaxX2BfAd2cm"
+ASSISTANT_ID = "asst_iupcjGidXND8e9fKvg4WYudH"
 OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
 ASSISTANT_GPT = OpenAIAssistant(OPENAI_API_KEY, ASSISTANT_ID)
 
@@ -81,20 +80,6 @@ async def start(update: Update, context: CallbackContext) -> None:
         user_type = response.json()['user_type']
         await update.message.reply_text(f'Welcome back! Your card number is: {card_number}')
 
-    # if user_type == 'Vendor':
-    #     kb = [
-    #         [KeyboardButton("🍽️ Бронирования для подтверждения")],
-    #         [KeyboardButton("💸 Начислить кэшбек")]
-    #         # [KeyboardButton("💸 Мой кэшбек", web_app=WebAppInfo(url=web_app_url)), KeyboardButton("📷 Загрузить чек")]
-    #     ]
-    #     reply_markup = ReplyKeyboardMarkup(kb, resize_keyboard=True)
-    #
-    #     # # Приветствие при стандартном вызове команды /start
-    #     await update.message.reply_text('Привет! Я консьерж-бот для организации досуга')
-    #     await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-    #     await update.message.reply_text("Пожалуйста, выберите один из вариантов на клавиатуре ниже:",
-    #                                     reply_markup=reply_markup)
-    # else:
     web_app_url = (f"https://gentle-piglet-legal.ngrok-free.app/view_my_chashback"
                    f"?tg_username={tg_user_params['tg_username']}&tg_first_name={tg_user_params['tg_first_name']}"
                    f"&tg_last_name={tg_user_params['tg_last_name']}&cashback={cashback}&card_number={card_number}")
